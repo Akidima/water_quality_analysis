@@ -1,0 +1,838 @@
+{
+    "start_time": "2025-10-21T15:17:30.577957",
+    "end_time": "2025-10-21T15:19:19.433542",
+    "duration": 98.743964,
+    "config": {
+        "filepath": "/Users/akidimageorge/Desktop/AI-ML/water_quality_analysis/data/national_water_plan.csv",
+        "na_values": [
+            "",
+            "TBC",
+            "Pending Investigation",
+            "N/A",
+            "Unknown",
+            "Not Available",
+            "null",
+            "NULL"
+        ],
+        "chunk_size": null,
+        "max_memory_mb": 500,
+        "required_columns": null,
+        "usecols": null,
+        "dtype_optimization": true
+    },
+    "validation": {
+        "is_valid": true,
+        "errors": [],
+        "warnings": [
+            "High missing data percentage: 8.10%"
+        ],
+        "metadata": {
+            "rows": 14187,
+            "columns": 38,
+            "memory_usage": 5.871614
+        },
+        "stats": {
+            "total_rows": 14187,
+            "total_columns": 38,
+            "memory_usage_mb": 5.871614,
+            "missing_values_percent": 8.096366948243945,
+            "duplicate_rows": 0,
+            "missing_values": {
+                "ID": 0,
+                "Water company": 0,
+                "Site name": 327,
+                "Longitude": 0,
+                "Latitude": 0,
+                "Receiving Environment": 0,
+                "River Basin District": 0,
+                "Management Catchment": 0,
+                "Local Authority": 0,
+                "Water Body": 0,
+                "Bathing Water Discharge Flag": 1,
+                "Shellfish Water Discharge Flag": 1,
+                "Ecological High Priority Site Flag": 138,
+                "Marine Protected Area Discharge Flag": 0,
+                "Non-bathing Priority Site Flag": 9149,
+                "Spill Events 2020": 2584,
+                "Spill Events 2021": 1788,
+                "Spill Events 2022": 956,
+                "Sewage Reduction Plan Targets Met Flag": 109,
+                "Spill Improvement Date Planned": 4,
+                "Rainfall Improvement Target Delivery Flag": 4402,
+                "Improvements List": 0,
+                "Predicted Annual Spill Frequence Post Scheme": 1938,
+                "Baseline": 791,
+                "Baseline Less Than Target": 10285,
+                "Requires No Improvement": 9269,
+                "Meets 2025 Requirements": 0,
+                "Meets 2030 Requirements": 0,
+                "Meets 2035 Requirements": 0,
+                "Meets 2040 Requirements": 0,
+                "Meets 2045 Requirements": 0,
+                "Meets 2050 Requirements": 0,
+                "2025 Projected Spills": 630,
+                "2030 Projected Spills": 570,
+                "2035 Projected Spills": 463,
+                "2040 Projected Spills": 219,
+                "2045 Projected Spills": 24,
+                "2050 Projected Spills": 0
+            },
+            "data_types": {
+                "ID": "string",
+                "Water company": "string",
+                "Site name": "string",
+                "Longitude": "float32",
+                "Latitude": "float32",
+                "Receiving Environment": "string",
+                "River Basin District": "string",
+                "Management Catchment": "string",
+                "Local Authority": "string",
+                "Water Body": "string",
+                "Bathing Water Discharge Flag": "string",
+                "Shellfish Water Discharge Flag": "string",
+                "Ecological High Priority Site Flag": "string",
+                "Marine Protected Area Discharge Flag": "string",
+                "Non-bathing Priority Site Flag": "string",
+                "Spill Events 2020": "float32",
+                "Spill Events 2021": "float32",
+                "Spill Events 2022": "float32",
+                "Sewage Reduction Plan Targets Met Flag": "string",
+                "Spill Improvement Date Planned": "float32",
+                "Rainfall Improvement Target Delivery Flag": "string",
+                "Improvements List": "string",
+                "Predicted Annual Spill Frequence Post Scheme": "float32",
+                "Baseline": "float32",
+                "Baseline Less Than Target": "string",
+                "Requires No Improvement": "string",
+                "Meets 2025 Requirements": "float32",
+                "Meets 2030 Requirements": "float32",
+                "Meets 2035 Requirements": "float32",
+                "Meets 2040 Requirements": "float32",
+                "Meets 2045 Requirements": "float32",
+                "Meets 2050 Requirements": "float32",
+                "2025 Projected Spills": "float32",
+                "2030 Projected Spills": "float32",
+                "2035 Projected Spills": "float32",
+                "2040 Projected Spills": "float32",
+                "2045 Projected Spills": "float32",
+                "2050 Projected Spills": "float32"
+            }
+        }
+    },
+    "statistics": {
+        "shape": {
+            "rows": 14187,
+            "columns": 38
+        },
+        "columns": [
+            "ID",
+            "Water company",
+            "Site name",
+            "Longitude",
+            "Latitude",
+            "Receiving Environment",
+            "River Basin District",
+            "Management Catchment",
+            "Local Authority",
+            "Water Body",
+            "Bathing Water Discharge Flag",
+            "Shellfish Water Discharge Flag",
+            "Ecological High Priority Site Flag",
+            "Marine Protected Area Discharge Flag",
+            "Non-bathing Priority Site Flag",
+            "Spill Events 2020",
+            "Spill Events 2021",
+            "Spill Events 2022",
+            "Sewage Reduction Plan Targets Met Flag",
+            "Spill Improvement Date Planned",
+            "Rainfall Improvement Target Delivery Flag",
+            "Improvements List",
+            "Predicted Annual Spill Frequence Post Scheme",
+            "Baseline",
+            "Baseline Less Than Target",
+            "Requires No Improvement",
+            "Meets 2025 Requirements",
+            "Meets 2030 Requirements",
+            "Meets 2035 Requirements",
+            "Meets 2040 Requirements",
+            "Meets 2045 Requirements",
+            "Meets 2050 Requirements",
+            "2025 Projected Spills",
+            "2030 Projected Spills",
+            "2035 Projected Spills",
+            "2040 Projected Spills",
+            "2045 Projected Spills",
+            "2050 Projected Spills"
+        ],
+        "dtypes": {
+            "ID": "string",
+            "Water company": "string",
+            "Site name": "string",
+            "Longitude": "float32",
+            "Latitude": "float32",
+            "Receiving Environment": "string",
+            "River Basin District": "string",
+            "Management Catchment": "string",
+            "Local Authority": "string",
+            "Water Body": "string",
+            "Bathing Water Discharge Flag": "string",
+            "Shellfish Water Discharge Flag": "string",
+            "Ecological High Priority Site Flag": "string",
+            "Marine Protected Area Discharge Flag": "string",
+            "Non-bathing Priority Site Flag": "string",
+            "Spill Events 2020": "float32",
+            "Spill Events 2021": "float32",
+            "Spill Events 2022": "float32",
+            "Sewage Reduction Plan Targets Met Flag": "string",
+            "Spill Improvement Date Planned": "float32",
+            "Rainfall Improvement Target Delivery Flag": "string",
+            "Improvements List": "string",
+            "Predicted Annual Spill Frequence Post Scheme": "float32",
+            "Baseline": "float32",
+            "Baseline Less Than Target": "string",
+            "Requires No Improvement": "string",
+            "Meets 2025 Requirements": "float32",
+            "Meets 2030 Requirements": "float32",
+            "Meets 2035 Requirements": "float32",
+            "Meets 2040 Requirements": "float32",
+            "Meets 2045 Requirements": "float32",
+            "Meets 2050 Requirements": "float32",
+            "2025 Projected Spills": "float32",
+            "2030 Projected Spills": "float32",
+            "2035 Projected Spills": "float32",
+            "2040 Projected Spills": "float32",
+            "2045 Projected Spills": "float32",
+            "2050 Projected Spills": "float32"
+        },
+        "missing_values": {
+            "Site name": {
+                "count": 327,
+                "percentage": 2.3049270458870796
+            },
+            "Bathing Water Discharge Flag": {
+                "count": 1,
+                "percentage": 0.007048706562345811
+            },
+            "Shellfish Water Discharge Flag": {
+                "count": 1,
+                "percentage": 0.007048706562345811
+            },
+            "Ecological High Priority Site Flag": {
+                "count": 138,
+                "percentage": 0.9727215056037217
+            },
+            "Non-bathing Priority Site Flag": {
+                "count": 9149,
+                "percentage": 64.48861633890182
+            },
+            "Spill Events 2020": {
+                "count": 2584,
+                "percentage": 18.21385775710157
+            },
+            "Spill Events 2021": {
+                "count": 1788,
+                "percentage": 12.603087333474308
+            },
+            "Spill Events 2022": {
+                "count": 956,
+                "percentage": 6.738563473602594
+            },
+            "Sewage Reduction Plan Targets Met Flag": {
+                "count": 109,
+                "percentage": 0.7683090152956933
+            },
+            "Spill Improvement Date Planned": {
+                "count": 4,
+                "percentage": 0.028194826249383242
+            },
+            "Rainfall Improvement Target Delivery Flag": {
+                "count": 4402,
+                "percentage": 31.028406287446252
+            },
+            "Predicted Annual Spill Frequence Post Scheme": {
+                "count": 1938,
+                "percentage": 13.660393317826177
+            },
+            "Baseline": {
+                "count": 791,
+                "percentage": 5.575526890815535
+            },
+            "Baseline Less Than Target": {
+                "count": 10285,
+                "percentage": 72.49594699372666
+            },
+            "Requires No Improvement": {
+                "count": 9269,
+                "percentage": 65.33446112638332
+            },
+            "2025 Projected Spills": {
+                "count": 630,
+                "percentage": 4.44068513427786
+            },
+            "2030 Projected Spills": {
+                "count": 570,
+                "percentage": 4.017762740537111
+            },
+            "2035 Projected Spills": {
+                "count": 463,
+                "percentage": 3.2635511383661093
+            },
+            "2040 Projected Spills": {
+                "count": 219,
+                "percentage": 1.5436667371537323
+            },
+            "2045 Projected Spills": {
+                "count": 24,
+                "percentage": 0.16916895749629943
+            }
+        },
+        "missing_percentage": {
+            "ID": 0.0,
+            "Water company": 0.0,
+            "Site name": 2.3049270458870796,
+            "Longitude": 0.0,
+            "Latitude": 0.0,
+            "Receiving Environment": 0.0,
+            "River Basin District": 0.0,
+            "Management Catchment": 0.0,
+            "Local Authority": 0.0,
+            "Water Body": 0.0,
+            "Bathing Water Discharge Flag": 0.007048706562345811,
+            "Shellfish Water Discharge Flag": 0.007048706562345811,
+            "Ecological High Priority Site Flag": 0.9727215056037217,
+            "Marine Protected Area Discharge Flag": 0.0,
+            "Non-bathing Priority Site Flag": 64.48861633890182,
+            "Spill Events 2020": 18.21385775710157,
+            "Spill Events 2021": 12.603087333474308,
+            "Spill Events 2022": 6.738563473602594,
+            "Sewage Reduction Plan Targets Met Flag": 0.7683090152956933,
+            "Spill Improvement Date Planned": 0.028194826249383242,
+            "Rainfall Improvement Target Delivery Flag": 31.028406287446252,
+            "Improvements List": 0.0,
+            "Predicted Annual Spill Frequence Post Scheme": 13.660393317826177,
+            "Baseline": 5.575526890815535,
+            "Baseline Less Than Target": 72.49594699372666,
+            "Requires No Improvement": 65.33446112638332,
+            "Meets 2025 Requirements": 0.0,
+            "Meets 2030 Requirements": 0.0,
+            "Meets 2035 Requirements": 0.0,
+            "Meets 2040 Requirements": 0.0,
+            "Meets 2045 Requirements": 0.0,
+            "Meets 2050 Requirements": 0.0,
+            "2025 Projected Spills": 4.44068513427786,
+            "2030 Projected Spills": 4.017762740537111,
+            "2035 Projected Spills": 3.2635511383661093,
+            "2040 Projected Spills": 1.5436667371537323,
+            "2045 Projected Spills": 0.16916895749629943,
+            "2050 Projected Spills": 0.0
+        },
+        "duplicate_rows": 0,
+        "summary_statistics": {
+            "Longitude": {
+                "count": 14187.0,
+                "mean": -1.7285683526291675,
+                "std": 1.2490946582367841,
+                "min": -6.341744422912598,
+                "25%": -2.4395782947540283,
+                "50%": -1.7132909297943115,
+                "75%": -1.140777051448822,
+                "max": 1.763842225074768
+            },
+            "Latitude": {
+                "count": 14187.0,
+                "mean": 52.73460738704448,
+                "std": 1.3757847189023773,
+                "min": 49.91554260253906,
+                "25%": 51.46610641479492,
+                "50%": 52.90325164794922,
+                "75%": 53.73062515258789,
+                "max": 55.78593444824219
+            },
+            "Spill Events 2020": {
+                "count": 11603.0,
+                "mean": 33.71110919589761,
+                "std": 45.370743487344754,
+                "min": 0.0,
+                "25%": 3.0,
+                "50%": 17.0,
+                "75%": 47.0,
+                "max": 378.0
+            },
+            "Spill Events 2021": {
+                "count": 12399.0,
+                "mean": 29.52754254375353,
+                "std": 37.63902587864765,
+                "min": 0.0,
+                "25%": 3.0,
+                "50%": 16.0,
+                "75%": 43.0,
+                "max": 361.0
+            },
+            "Spill Events 2022": {
+                "count": 13231.0,
+                "mean": 22.519235129619833,
+                "std": 30.73603862970922,
+                "min": 0.0,
+                "25%": 1.0,
+                "50%": 11.0,
+                "75%": 33.0,
+                "max": 364.0
+            },
+            "Spill Improvement Date Planned": {
+                "count": 14183.0,
+                "mean": 2033.8493971656208,
+                "std": 9.345324748309851,
+                "min": 2023.0,
+                "25%": 2023.0,
+                "50%": 2035.0,
+                "75%": 2040.0,
+                "max": 2050.0
+            },
+            "Predicted Annual Spill Frequence Post Scheme": {
+                "count": 12249.0,
+                "mean": 8.925626581761776,
+                "std": 2.827607866882487,
+                "min": 0.0,
+                "25%": 10.0,
+                "50%": 10.0,
+                "75%": 10.0,
+                "max": 10.0
+            },
+            "Baseline": {
+                "count": 13396.0,
+                "mean": 31.442744102717228,
+                "std": 43.96900659812928,
+                "min": 0.0,
+                "25%": 2.0,
+                "50%": 15.0,
+                "75%": 43.0,
+                "max": 378.0
+            },
+            "Meets 2025 Requirements": {
+                "count": 14187.0,
+                "mean": 0.4578839782899838,
+                "std": 0.4982406433522068,
+                "min": 0.0,
+                "25%": 0.0,
+                "50%": 0.0,
+                "75%": 1.0,
+                "max": 1.0
+            },
+            "Meets 2030 Requirements": {
+                "count": 14187.0,
+                "mean": 0.5842672869528441,
+                "std": 0.49286524202462,
+                "min": 0.0,
+                "25%": 0.0,
+                "50%": 1.0,
+                "75%": 1.0,
+                "max": 1.0
+            },
+            "Meets 2035 Requirements": {
+                "count": 14187.0,
+                "mean": 0.6978219496722351,
+                "std": 0.4592181841290387,
+                "min": 0.0,
+                "25%": 0.0,
+                "50%": 1.0,
+                "75%": 1.0,
+                "max": 1.0
+            },
+            "Meets 2040 Requirements": {
+                "count": 14187.0,
+                "mean": 0.825051103122577,
+                "std": 0.3799367780362178,
+                "min": 0.0,
+                "25%": 1.0,
+                "50%": 1.0,
+                "75%": 1.0,
+                "max": 1.0
+            },
+            "Meets 2045 Requirements": {
+                "count": 14187.0,
+                "mean": 0.9313455980827519,
+                "std": 0.2528744398788526,
+                "min": 0.0,
+                "25%": 1.0,
+                "50%": 1.0,
+                "75%": 1.0,
+                "max": 1.0
+            },
+            "Meets 2050 Requirements": {
+                "count": 14187.0,
+                "mean": 1.0,
+                "std": 0.0,
+                "min": 1.0,
+                "25%": 1.0,
+                "50%": 1.0,
+                "75%": 1.0,
+                "max": 1.0
+            },
+            "2025 Projected Spills": {
+                "count": 13557.0,
+                "mean": 25.408571217821052,
+                "std": 32.15872400082907,
+                "min": 0.0,
+                "25%": 3.0,
+                "50%": 13.0,
+                "75%": 37.0,
+                "max": 352.0
+            },
+            "2030 Projected Spills": {
+                "count": 13617.0,
+                "mean": 20.20173312770801,
+                "std": 27.742980129525705,
+                "min": 0.0,
+                "25%": 3.0,
+                "50%": 10.0,
+                "75%": 25.0,
+                "max": 352.0
+            },
+            "2035 Projected Spills": {
+                "count": 13724.0,
+                "mean": 16.24635674730399,
+                "std": 24.15269997566235,
+                "min": 0.0,
+                "25%": 3.0,
+                "50%": 10.0,
+                "75%": 15.0,
+                "max": 352.0
+            },
+            "2040 Projected Spills": {
+                "count": 13968.0,
+                "mean": 12.308920389461626,
+                "std": 18.538004804898783,
+                "min": 0.0,
+                "25%": 4.0,
+                "50%": 10.0,
+                "75%": 10.0,
+                "max": 352.0
+            },
+            "2045 Projected Spills": {
+                "count": 14163.0,
+                "mean": 9.268234131186896,
+                "std": 12.377534471434783,
+                "min": 0.0,
+                "25%": 4.0,
+                "50%": 10.0,
+                "75%": 10.0,
+                "max": 352.0
+            },
+            "2050 Projected Spills": {
+                "count": 14187.0,
+                "mean": 7.313667442024388,
+                "std": 3.881039631696193,
+                "min": 0.0,
+                "25%": 4.0,
+                "50%": 10.0,
+                "75%": 10.0,
+                "max": 10.0
+            },
+            "numeric": {
+                "Longitude": {
+                    "count": 14187.0,
+                    "mean": -1.7285683526291675,
+                    "std": 1.2490946582367841,
+                    "min": -6.341744422912598,
+                    "25%": -2.4395782947540283,
+                    "50%": -1.7132909297943115,
+                    "75%": -1.140777051448822,
+                    "max": 1.763842225074768
+                },
+                "Latitude": {
+                    "count": 14187.0,
+                    "mean": 52.73460738704448,
+                    "std": 1.3757847189023773,
+                    "min": 49.91554260253906,
+                    "25%": 51.46610641479492,
+                    "50%": 52.90325164794922,
+                    "75%": 53.73062515258789,
+                    "max": 55.78593444824219
+                },
+                "Spill Events 2020": {
+                    "count": 11603.0,
+                    "mean": 33.71110919589761,
+                    "std": 45.370743487344754,
+                    "min": 0.0,
+                    "25%": 3.0,
+                    "50%": 17.0,
+                    "75%": 47.0,
+                    "max": 378.0
+                },
+                "Spill Events 2021": {
+                    "count": 12399.0,
+                    "mean": 29.52754254375353,
+                    "std": 37.63902587864765,
+                    "min": 0.0,
+                    "25%": 3.0,
+                    "50%": 16.0,
+                    "75%": 43.0,
+                    "max": 361.0
+                },
+                "Spill Events 2022": {
+                    "count": 13231.0,
+                    "mean": 22.519235129619833,
+                    "std": 30.73603862970922,
+                    "min": 0.0,
+                    "25%": 1.0,
+                    "50%": 11.0,
+                    "75%": 33.0,
+                    "max": 364.0
+                },
+                "Spill Improvement Date Planned": {
+                    "count": 14183.0,
+                    "mean": 2033.8493971656208,
+                    "std": 9.345324748309851,
+                    "min": 2023.0,
+                    "25%": 2023.0,
+                    "50%": 2035.0,
+                    "75%": 2040.0,
+                    "max": 2050.0
+                },
+                "Predicted Annual Spill Frequence Post Scheme": {
+                    "count": 12249.0,
+                    "mean": 8.925626581761776,
+                    "std": 2.827607866882487,
+                    "min": 0.0,
+                    "25%": 10.0,
+                    "50%": 10.0,
+                    "75%": 10.0,
+                    "max": 10.0
+                },
+                "Baseline": {
+                    "count": 13396.0,
+                    "mean": 31.442744102717228,
+                    "std": 43.96900659812928,
+                    "min": 0.0,
+                    "25%": 2.0,
+                    "50%": 15.0,
+                    "75%": 43.0,
+                    "max": 378.0
+                },
+                "Meets 2025 Requirements": {
+                    "count": 14187.0,
+                    "mean": 0.4578839782899838,
+                    "std": 0.4982406433522068,
+                    "min": 0.0,
+                    "25%": 0.0,
+                    "50%": 0.0,
+                    "75%": 1.0,
+                    "max": 1.0
+                },
+                "Meets 2030 Requirements": {
+                    "count": 14187.0,
+                    "mean": 0.5842672869528441,
+                    "std": 0.49286524202462,
+                    "min": 0.0,
+                    "25%": 0.0,
+                    "50%": 1.0,
+                    "75%": 1.0,
+                    "max": 1.0
+                },
+                "Meets 2035 Requirements": {
+                    "count": 14187.0,
+                    "mean": 0.6978219496722351,
+                    "std": 0.4592181841290387,
+                    "min": 0.0,
+                    "25%": 0.0,
+                    "50%": 1.0,
+                    "75%": 1.0,
+                    "max": 1.0
+                },
+                "Meets 2040 Requirements": {
+                    "count": 14187.0,
+                    "mean": 0.825051103122577,
+                    "std": 0.3799367780362178,
+                    "min": 0.0,
+                    "25%": 1.0,
+                    "50%": 1.0,
+                    "75%": 1.0,
+                    "max": 1.0
+                },
+                "Meets 2045 Requirements": {
+                    "count": 14187.0,
+                    "mean": 0.9313455980827519,
+                    "std": 0.2528744398788526,
+                    "min": 0.0,
+                    "25%": 1.0,
+                    "50%": 1.0,
+                    "75%": 1.0,
+                    "max": 1.0
+                },
+                "Meets 2050 Requirements": {
+                    "count": 14187.0,
+                    "mean": 1.0,
+                    "std": 0.0,
+                    "min": 1.0,
+                    "25%": 1.0,
+                    "50%": 1.0,
+                    "75%": 1.0,
+                    "max": 1.0
+                },
+                "2025 Projected Spills": {
+                    "count": 13557.0,
+                    "mean": 25.408571217821052,
+                    "std": 32.15872400082907,
+                    "min": 0.0,
+                    "25%": 3.0,
+                    "50%": 13.0,
+                    "75%": 37.0,
+                    "max": 352.0
+                },
+                "2030 Projected Spills": {
+                    "count": 13617.0,
+                    "mean": 20.20173312770801,
+                    "std": 27.742980129525705,
+                    "min": 0.0,
+                    "25%": 3.0,
+                    "50%": 10.0,
+                    "75%": 25.0,
+                    "max": 352.0
+                },
+                "2035 Projected Spills": {
+                    "count": 13724.0,
+                    "mean": 16.24635674730399,
+                    "std": 24.15269997566235,
+                    "min": 0.0,
+                    "25%": 3.0,
+                    "50%": 10.0,
+                    "75%": 15.0,
+                    "max": 352.0
+                },
+                "2040 Projected Spills": {
+                    "count": 13968.0,
+                    "mean": 12.308920389461626,
+                    "std": 18.538004804898783,
+                    "min": 0.0,
+                    "25%": 4.0,
+                    "50%": 10.0,
+                    "75%": 10.0,
+                    "max": 352.0
+                },
+                "2045 Projected Spills": {
+                    "count": 14163.0,
+                    "mean": 9.268234131186896,
+                    "std": 12.377534471434783,
+                    "min": 0.0,
+                    "25%": 4.0,
+                    "50%": 10.0,
+                    "75%": 10.0,
+                    "max": 352.0
+                },
+                "2050 Projected Spills": {
+                    "count": 14187.0,
+                    "mean": 7.313667442024388,
+                    "std": 3.881039631696193,
+                    "min": 0.0,
+                    "25%": 4.0,
+                    "50%": 10.0,
+                    "75%": 10.0,
+                    "max": 10.0
+                }
+            },
+            "categorical": {
+                "ID": {
+                    "unique_values": 14187,
+                    "unique_percentage": 100.0,
+                    "top_value": "AnW0001"
+                },
+                "Water company": {
+                    "unique_values": 9,
+                    "unique_percentage": 0.06343835906111228,
+                    "top_value": "Severn Trent"
+                },
+                "Site name": {
+                    "unique_values": 12683,
+                    "unique_percentage": 89.3987453302319,
+                    "top_value": "Not Matched in Consents Database"
+                },
+                "Receiving Environment": {
+                    "unique_values": 3,
+                    "unique_percentage": 0.02114611968703743,
+                    "top_value": "Inland"
+                },
+                "River Basin District": {
+                    "unique_values": 10,
+                    "unique_percentage": 0.07048706562345809,
+                    "top_value": "Humber"
+                },
+                "Management Catchment": {
+                    "unique_values": 209,
+                    "unique_percentage": 1.4731796715302743,
+                    "top_value": "Aire and Calder"
+                },
+                "Local Authority": {
+                    "unique_values": 288,
+                    "unique_percentage": 2.030027489955593,
+                    "top_value": "North Yorkshire"
+                },
+                "Water Body": {
+                    "unique_values": 2534,
+                    "unique_percentage": 17.86142242898428,
+                    "top_value": "Not part of a river WB catchment"
+                },
+                "Bathing Water Discharge Flag": {
+                    "unique_values": 2,
+                    "unique_percentage": 0.014097413124691621,
+                    "top_value": "N"
+                },
+                "Shellfish Water Discharge Flag": {
+                    "unique_values": 2,
+                    "unique_percentage": 0.014097413124691621,
+                    "top_value": "N"
+                },
+                "Ecological High Priority Site Flag": {
+                    "unique_values": 2,
+                    "unique_percentage": 0.014097413124691621,
+                    "top_value": "N"
+                },
+                "Marine Protected Area Discharge Flag": {
+                    "unique_values": 3,
+                    "unique_percentage": 0.02114611968703743,
+                    "top_value": "N"
+                },
+                "Non-bathing Priority Site Flag": {
+                    "unique_values": 1,
+                    "unique_percentage": 0.007048706562345811,
+                    "top_value": "Y"
+                },
+                "Sewage Reduction Plan Targets Met Flag": {
+                    "unique_values": 4,
+                    "unique_percentage": 0.028194826249383242,
+                    "top_value": "N"
+                },
+                "Rainfall Improvement Target Delivery Flag": {
+                    "unique_values": 3,
+                    "unique_percentage": 0.02114611968703743,
+                    "top_value": "Y"
+                },
+                "Improvements List": {
+                    "unique_values": 98,
+                    "unique_percentage": 0.6907732431098893,
+                    "top_value": "New screen. Other improvements to be confirmed"
+                },
+                "Baseline Less Than Target": {
+                    "unique_values": 1,
+                    "unique_percentage": 0.007048706562345811,
+                    "top_value": "Y"
+                },
+                "Requires No Improvement": {
+                    "unique_values": 1,
+                    "unique_percentage": 0.007048706562345811,
+                    "top_value": "Y"
+                }
+            }
+        }
+    },
+    "errors": [],
+    "warnings": [
+        "High missing data percentage: 8.10%"
+    ],
+    "metadata": {
+        "rows": 14187,
+        "columns": 38,
+        "memory_usage": 5.871614,
+        "missing_values_percent": 8.096366948243945,
+        "duplicate_rows": 0
+    }
+}
