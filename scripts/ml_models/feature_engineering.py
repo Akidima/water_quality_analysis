@@ -4,16 +4,23 @@ Purpose: Data validation and preprocessing with Pydantic validation and support 
 """
 
 import pandas as pd
-from typing import List, Union
+from typing import List, Union, TYPE_CHECKING, Any
 from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationError
 from .model_utils import get_logger
 
-try:
+if TYPE_CHECKING:
     import dask.dataframe as dd
-    DASK_AVAILABLE = True
-except ImportError:
-    DASK_AVAILABLE = False
-    dd = None
+    DaskDataFrame = dd.DataFrame
+    DASK_AVAILABLE: bool
+else:
+    try:
+        import dask.dataframe as dd
+        DASK_AVAILABLE = True
+        DaskDataFrame = dd.DataFrame
+    except ImportError:
+        DASK_AVAILABLE = False
+        dd = None
+        DaskDataFrame = Any
 
 logger = get_logger(__name__)
 
@@ -103,12 +110,12 @@ class ValidationResult(BaseModel):
 
 def _is_dask_dataframe(df) -> bool:
     """Check if DataFrame is a Dask DataFrame."""
-    if not DASK_AVAILABLE:
+    if not DASK_AVAILABLE or dd is None:
         return False
     return isinstance(df, dd.DataFrame)
 
 
-def _get_dataframe_length(df: Union[pd.DataFrame, 'dd.DataFrame']) -> int:
+def _get_dataframe_length(df: Union[pd.DataFrame, DaskDataFrame]) -> int:
     """
     Safely get the length of a DataFrame (pandas or Dask).
     
@@ -119,7 +126,7 @@ def _get_dataframe_length(df: Union[pd.DataFrame, 'dd.DataFrame']) -> int:
     return len(df)
 
 
-def _compute_if_dask(df: Union[pd.DataFrame, 'dd.DataFrame']) -> pd.DataFrame:
+def _compute_if_dask(df: Union[pd.DataFrame, DaskDataFrame]) -> pd.DataFrame:
     """
     Convert Dask DataFrame to Pandas if needed, otherwise return as-is.
     
@@ -144,7 +151,7 @@ class FeatureEngineer:
 
     @staticmethod
     def validate_data(
-        df: Union[pd.DataFrame, 'dd.DataFrame'],
+        df: Union[pd.DataFrame, DaskDataFrame],
         required_cols: List[str],
         drop_missing: bool = True,
         min_rows_after_cleaning: int = 1
@@ -259,7 +266,7 @@ class FeatureEngineer:
     
     @staticmethod
     def validate_data_with_config(
-        df: Union[pd.DataFrame, 'dd.DataFrame'],
+        df: Union[pd.DataFrame, DaskDataFrame],
         config: FeatureEngineeringConfig
     ) -> pd.DataFrame:
         """

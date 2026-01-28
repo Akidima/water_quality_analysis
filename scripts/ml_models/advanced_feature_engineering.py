@@ -5,7 +5,7 @@ Purpose: Automated feature creation, selection, and importance analysis.
 
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Optional, Union, Tuple
+from typing import List, Dict, Optional, Union, Tuple, cast
 from sklearn.feature_selection import (
     SelectKBest,
     f_regression,
@@ -92,15 +92,18 @@ class AdvancedFeatureEngineer:
         if columns is None:
             columns = df.select_dtypes(include=[np.number]).columns.tolist()
         
+        # Type narrowing: ensure columns is List[str] for type checker
+        columns_list: List[str] = columns if columns is not None else []
+        
         result_df = df.copy()
         
         # Create pairwise interactions
-        for i, col1 in enumerate(columns):
-            for col2 in columns[i+1:]:
+        for i, col1 in enumerate(columns_list):
+            for col2 in columns_list[i+1:]:
                 interaction_name = f"{col1}_x_{col2}"
                 result_df[interaction_name] = df[col1] * df[col2]
         
-        logger.info(f"Created {len(columns) * (len(columns) - 1) // 2} interaction features")
+        logger.info(f"Created {len(columns_list) * (len(columns_list) - 1) // 2} interaction features")
         return result_df
     
     def create_statistical_features(
@@ -125,20 +128,27 @@ class AdvancedFeatureEngineer:
         if columns is None:
             columns = df.select_dtypes(include=[np.number]).columns.tolist()
         
+        # Type narrowing: ensure columns is List[str] for type checker
+        columns_list: List[str] = columns if columns is not None else []
+        
         result_df = df.copy()
         
         if group_by and group_by in df.columns:
-            for col in columns:
+            for col in columns_list:
                 grouped = df.groupby(group_by)[col]
-                result_df[f"{col}_group_mean"] = df[group_by].map(grouped.mean())
-                result_df[f"{col}_group_std"] = df[group_by].map(grouped.std())
-                result_df[f"{col}_group_min"] = df[group_by].map(grouped.min())
-                result_df[f"{col}_group_max"] = df[group_by].map(grouped.max())
+                mean_series = cast(pd.Series, grouped.mean())
+                std_series = cast(pd.Series, grouped.std())
+                min_series = cast(pd.Series, grouped.min())
+                max_series = cast(pd.Series, grouped.max())
+                result_df[f"{col}_group_mean"] = df[group_by].map(mean_series.to_dict())  # type: ignore[arg-type]
+                result_df[f"{col}_group_std"] = df[group_by].map(std_series.to_dict())  # type: ignore[arg-type]
+                result_df[f"{col}_group_min"] = df[group_by].map(min_series.to_dict())  # type: ignore[arg-type]
+                result_df[f"{col}_group_max"] = df[group_by].map(max_series.to_dict())  # type: ignore[arg-type]
             
             logger.info(f"Created statistical features grouped by {group_by}")
         else:
             # Global statistics
-            for col in columns:
+            for col in columns_list:
                 result_df[f"{col}_mean"] = df[col].mean()
                 result_df[f"{col}_std"] = df[col].std()
         
@@ -173,13 +183,13 @@ class AdvancedFeatureEngineer:
             raise ValueError(f"Unknown score_func: {score_func}")
         
         X_selected = selector.fit_transform(X, y)
-        selected_features = X.columns[selector.get_support()].tolist()
+        selected_features: List[str] = X.columns[selector.get_support()].tolist()
         
         self.selected_features_ = selected_features
         
         logger.info(f"Selected features: {selected_features}")
         
-        return pd.DataFrame(X_selected, columns=selected_features, index=X.index), selected_features
+        return pd.DataFrame(X_selected, columns=selected_features, index=X.index), selected_features  # type: ignore[arg-type]
     
     def select_features_rfe(
         self,
@@ -207,13 +217,13 @@ class AdvancedFeatureEngineer:
         
         selector = RFE(estimator=estimator, n_features_to_select=n_features)
         X_selected = selector.fit_transform(X, y)
-        selected_features = X.columns[selector.get_support()].tolist()
+        selected_features: List[str] = X.columns[selector.get_support()].tolist()
         
         self.selected_features_ = selected_features
         
         logger.info(f"Selected features: {selected_features}")
         
-        return pd.DataFrame(X_selected, columns=selected_features, index=X.index), selected_features
+        return pd.DataFrame(X_selected, columns=selected_features, index=X.index), selected_features  # type: ignore[arg-type]
     
     def select_features_importance(
         self,
@@ -248,9 +258,9 @@ class AdvancedFeatureEngineer:
             importances = estimator.feature_importances_
         else:
             # For linear models, use coefficients
-            importances = np.abs(estimator.coef_)
+            importances = np.abs(estimator.coef_)  # type: ignore[attr-defined]
         
-        feature_importance = dict(zip(X.columns, importances))
+        feature_importance: Dict[str, float] = {str(k): float(v) for k, v in zip(X.columns, importances)}
         self.feature_importance_ = feature_importance
         
         # Select features
@@ -269,13 +279,13 @@ class AdvancedFeatureEngineer:
             selector.fit(X, y)
         
         X_selected = selector.transform(X)
-        selected_features = X.columns[selector.get_support()].tolist()
+        selected_features: List[str] = X.columns[selector.get_support()].tolist()
         
         self.selected_features_ = selected_features
         
         logger.info(f"Selected {len(selected_features)} features based on importance")
         
-        return pd.DataFrame(X_selected, columns=selected_features, index=X.index), selected_features, feature_importance
+        return pd.DataFrame(X_selected, columns=selected_features, index=X.index), selected_features, feature_importance  # type: ignore[arg-type]
     
     def apply_pca(
         self,
@@ -300,14 +310,14 @@ class AdvancedFeatureEngineer:
             pca = PCA()
             pca.fit(X)
             cumsum_variance = np.cumsum(pca.explained_variance_ratio_)
-            n_components = np.argmax(cumsum_variance >= variance_threshold) + 1
+            n_components = int(np.argmax(cumsum_variance >= variance_threshold) + 1)
             logger.info(f"Selected {n_components} components to explain {variance_threshold*100}% variance")
         
         pca = PCA(n_components=n_components)
         X_pca = pca.fit_transform(X)
         
-        component_names = [f"PC{i+1}" for i in range(n_components)]
-        df_pca = pd.DataFrame(X_pca, columns=component_names, index=X.index)
+        component_names: List[str] = [f"PC{i+1}" for i in range(n_components)]
+        df_pca = pd.DataFrame(X_pca, columns=component_names, index=X.index)  # type: ignore[arg-type]
         
         logger.info(f"PCA completed. Explained variance: {pca.explained_variance_ratio_.sum():.4f}")
         
@@ -315,7 +325,7 @@ class AdvancedFeatureEngineer:
     
     def get_feature_importance(self) -> Optional[Dict[str, float]]:
         """Get feature importance scores."""
-        return self.feature_importance_
+        return self.feature_importance_  # type: ignore[return-value]
     
     def get_selected_features(self) -> Optional[List[str]]:
         """Get list of selected features."""

@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import sys
+from typing import cast
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -53,16 +54,17 @@ def main():
     clean_df = df[required_cols].dropna()
     print(f"   Clean data shape: {clean_df.shape}")
     
-    X = clean_df[config.features]
-    y = clean_df[config.target]
+    X = cast(pd.DataFrame, clean_df[config.features])
+    y = cast(pd.Series, clean_df[config.target])
     
     # Advanced Feature Engineering
     print("\n3. Advanced Feature Engineering...")
     feature_engineer = AdvancedFeatureEngineer()
     
     # Create interaction features
+    feature_df = cast(pd.DataFrame, clean_df[config.features])
     df_with_interactions = feature_engineer.create_interaction_features(
-        clean_df[config.features],
+        feature_df,
         columns=config.features
     )
     print(f"   Created {len(df_with_interactions.columns) - len(config.features)} interaction features")
@@ -120,12 +122,14 @@ def main():
         print(f"   ✓ Feature importance plot: {path}")
     
     # Predictions vs actual
-    path = visualizer.plot_prediction_vs_actual(y.values, y_pred)
+    y_true_arr = np.asarray(y.values)
+    y_pred_arr = np.asarray(y_pred)
+    path = visualizer.plot_prediction_vs_actual(y_true_arr, y_pred_arr)
     plot_paths.append(path)
     print(f"   ✓ Predictions vs actual plot: {path}")
     
     # Residuals
-    path = visualizer.plot_residuals(y.values, y_pred)
+    path = visualizer.plot_residuals(y_true_arr, y_pred_arr)
     plot_paths.append(path)
     print(f"   ✓ Residual analysis plot: {path}")
     
