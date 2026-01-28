@@ -275,6 +275,14 @@ class DataValidator:
                 logger.warning(f"Column name validation failed: {e}")
         
         # Compute length for Dask DataFrame safely
+        # Initialize metadata and df_len with defaults to ensure they're always defined
+        df_len = 0
+        metadata = ValidationMetadata(
+            rows=0,
+            columns=len(df.columns) if hasattr(df, 'columns') else 0,
+            memory_usage=0.0
+        )
+        
         try:
             df_len = _get_dataframe_length(df)
             
@@ -309,7 +317,7 @@ class DataValidator:
                 )
         except Exception as e:
             logger.error(f"Error during initial validation: {e}")
-            # Return a basic report with error if initial validation fails
+            # Update metadata with error state
             metadata = ValidationMetadata(
                 rows=0,
                 columns=len(df.columns) if hasattr(df, 'columns') else 0,
@@ -331,18 +339,11 @@ class DataValidator:
                 for col in missing_cols:
                     error_msg = f"Missing required column: {col}"
                     if self.error_handler and ColumnValidationError is not Exception:
-<<<<<<< Current (Your changes)
+                        # Use positional arguments to match ColumnValidationError.__init__ signature
                         error_instance = ColumnValidationError(
                             col,
                             "Required column is missing",
                             "Ensure the column exists in the dataset"
-=======
-                        # Type checker needs explicit keyword args when ColumnValidationError could be Exception
-                        error_instance = ColumnValidationError(
-                            column_name=col,
-                            issue="Required column is missing",
-                            suggestion="Ensure the column exists in the dataset"
->>>>>>> Incoming (Background Agent changes)
                         )
                         self.error_handler.add_error(cast(Any, error_instance))
                     errors.append(error_msg)
