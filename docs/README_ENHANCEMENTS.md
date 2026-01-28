@@ -12,11 +12,12 @@ This project now includes **comprehensive Pydantic enhancements** that extend th
 1. **`PYDANTIC_ENHANCEMENTS_GUIDE.md`** - Complete implementation guide (600+ lines)
 2. **`ENHANCEMENTS_SUMMARY.md`** - Executive summary of what was implemented
 3. **`README_ENHANCEMENTS.md`** - This file (quick start and navigation)
+4. **`PREDICTIVE_MODELING_REQUIREMENTS.md`** - Predictive modeling requirements & enhancements
 
 ### Original Documentation
-4. **`PYDANTIC_IMPLEMENTATION.md`** - Original Pydantic implementation for data-loader.py
-5. **`DATA_CLEANER_DOCUMENTATION.md`** - Data cleaner documentation
-6. **`IMPLEMENTATION_SUMMARY.md`** - Original data cleaner refactoring summary
+5. **`PYDANTIC_IMPLEMENTATION.md`** - Original Pydantic implementation for data-loader.py
+6. **`DATA_CLEANER_DOCUMENTATION.md`** - Data cleaner documentation
+7. **`IMPLEMENTATION_SUMMARY.md`** - Original data cleaner refactoring summary
 
 ---
 

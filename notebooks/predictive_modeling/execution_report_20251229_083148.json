@@ -1,0 +1,97 @@
+{
+  "timestamp": "20251229_083148",
+  "start_time": "2025-12-29T08:31:49.934675",
+  "notebook_path": "notebooks/predictive_modeling/comprehensive_modeling.ipynb",
+  "cells_executed": [
+    {
+      "cell": 1,
+      "status": "completed"
+    },
+    {
+      "cell": 2,
+      "status": "completed"
+    },
+    {
+      "cell": 3,
+      "status": "completed"
+    },
+    {
+      "cell": 4,
+      "status": "completed"
+    },
+    {
+      "cell": 5,
+      "status": "completed"
+    },
+    {
+      "cell": 6,
+      "status": "completed"
+    },
+    {
+      "cell": 7,
+      "status": "completed"
+    },
+    {
+      "cell": 8,
+      "status": "completed"
+    },
+    {
+      "cell": 9,
+      "status": "completed"
+    },
+    {
+      "cell": 10,
+      "status": "completed"
+    },
+    {
+      "cell": 11,
+      "status": "completed"
+    },
+    {
+      "cell": 12,
+      "status": "completed"
+    },
+    {
+      "cell": 13,
+      "status": "completed"
+    },
+    {
+      "cell": 14,
+      "status": "completed"
+    },
+    {
+      "cell": 15,
+      "status": "completed"
+    },
+    {
+      "cell": 16,
+      "status": "failed"
+    },
+    {
+      "cell": 17,
+      "status": "failed"
+    }
+  ],
+  "errors": [
+    {
+      "cell": 16,
+      "error": "property 'threshold_' of 'SelectFromModel' object has no setter"
+    },
+    {
+      "cell": 17,
+      "error": "name 'importance' is not defined"
+    }
+  ],
+  "warnings": [],
+  "data_info": {},
+  "model_metrics": {},
+  "predictions": [
+    9.36,
+    10.0,
+    10.0,
+    10.0,
+    9.85
+  ],
+  "end_time": "2025-12-29T08:33:07.687854",
+  "duration": 77.753179
+}

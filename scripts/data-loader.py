@@ -7,6 +7,7 @@ import dask.dataframe as dd
 import numpy as np
 import logging
 import os
+import argparse
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, List
 import json
@@ -15,6 +16,24 @@ from pydantic import BaseModel, Field, field_validator, model_validator, ConfigD
 
 # Configure module logger
 logger = logging.getLogger(__name__)
+
+# Import Pydantic enhancements
+try:
+    from pydantic_enhancements import (
+        ColumnNameValidator, NumericStatistics, CategoricalStatistics,
+        DatasetStatistics, ErrorHandler, ColumnValidationError,
+        RangeValidationError, DataQualityError
+    )
+except ImportError:
+    logger.warning("Pydantic enhancements module not available. Using basic features only.")
+    ColumnNameValidator = None
+    NumericStatistics = None
+    CategoricalStatistics = None
+    DatasetStatistics = None
+    ErrorHandler = None
+    ColumnValidationError = Exception
+    RangeValidationError = Exception
+    DataQualityError = Exception
 
 class DataConfig(BaseModel):
     """Configuration for data loading with Pydantic validation.
@@ -142,6 +161,40 @@ class ExplorationReport(BaseModel):
     metadata: ExplorationMetadata
 
 
+def _is_dask_dataframe(df) -> bool:
+    """Check if DataFrame is a Dask DataFrame."""
+    return isinstance(df, dd.DataFrame)
+
+
+def _get_dataframe_length(df) -> int:
+    """
+    Safely get the length of a DataFrame (pandas or Dask).
+    
+    For Dask DataFrames, this computes the length efficiently.
+    For pandas DataFrames, returns len() directly.
+    """
+    if _is_dask_dataframe(df):
+        # For Dask, use shape[0].compute() which is more efficient than len()
+        return int(df.shape[0].compute())
+    else:
+        return len(df)
+
+
+def _safe_compute(obj):
+    """
+    Safely compute a Dask object if needed, otherwise return as-is.
+    
+    Args:
+        obj: Either a Dask object (with .compute() method) or a regular object
+        
+    Returns:
+        Computed value or original object
+    """
+    if hasattr(obj, 'compute'):
+        return obj.compute()
+    return obj
+
+
 class DataValidator:
     """
     Validates data quality and integrity.
@@ -149,6 +202,10 @@ class DataValidator:
     Think of this like a **quality inspector at a toy factory** whoc checks 
     each toy to make sure it's safe and works properly before it goes to the store.
     """
+    
+    def __init__(self):
+        """Initialize validator with error handler if available."""
+        self.error_handler = ErrorHandler() if ErrorHandler else None
 
     @staticmethod
     def validate_file_exists(filepath: str) -> Path:
@@ -173,8 +230,8 @@ class DataValidator:
         logger.info(f"File validated: {filepath} ({file_path.stat().st_size / 1e6:.2f} MB)")
         return file_path
 
-    @staticmethod
     def validate_dataframe(
+        self,
         df: dd.DataFrame,
         min_rows: int = 1,
         required_columns: Optional[List[str]] = None,
@@ -191,19 +248,53 @@ class DataValidator:
         warnings = []
         is_valid = True
         
-        # Compute length for Dask DataFrame
-        df_len = len(df) if hasattr(df, '__len__') else df.shape[0].compute()
+        # Initialize error handler if available
+        if self.error_handler:
+            self.error_handler.clear()
+        
+        # Validate column names using ColumnNameValidator if available
+        if ColumnNameValidator:
+            try:
+                column_validation = ColumnNameValidator.validate_columns(df.columns.tolist())
+                if column_validation.get('warnings'):
+                    for col in column_validation['warnings']:
+                        if self.error_handler:
+                            self.error_handler.add_warning(f"Column '{col}' does not match standard patterns")
+                        warnings.append(f"Column '{col}' does not match standard patterns")
+                if column_validation.get('suggestions'):
+                    for suggestion_info in column_validation['suggestions']:
+                        suggestion_msg = f"Column '{suggestion_info['column']}': Consider {suggestion_info['suggestions']}"
+                        if self.error_handler:
+                            self.error_handler.add_warning(suggestion_msg)
+                        warnings.append(suggestion_msg)
+            except Exception as e:
+                logger.warning(f"Column name validation failed: {e}")
+        
+        # Compute length for Dask DataFrame safely
+        df_len = _get_dataframe_length(df)
+        
+        # Compute memory usage safely
+        mem_usage_sum = df.memory_usage(deep=True).sum()
+        mem_usage_mb = _safe_compute(mem_usage_sum) / 1e6
         
         metadata = ValidationMetadata(
             rows=df_len,
             columns=len(df.columns),
-            memory_usage=df.memory_usage(deep=True).sum().compute() / 1e6 if hasattr(df.memory_usage(deep=True).sum(), 'compute') else df.memory_usage(deep=True).sum() / 1e6
+            memory_usage=mem_usage_mb
         )
 
         # Check if DataFrame is empty
         if df_len == 0 or df_len < min_rows:
             is_valid = False
-            errors.append(f"DataFrame is empty or has less than {min_rows} rows")
+            error_msg = f"DataFrame is empty or has less than {min_rows} rows"
+            if self.error_handler and DataQualityError:
+                self.error_handler.add_error(DataQualityError(
+                    issue=error_msg,
+                    affected_rows=df_len,
+                    total_rows=min_rows,
+                    threshold=0.0
+                ))
+            errors.append(error_msg)
             return ValidationReport(
                 is_valid=is_valid,
                 errors=errors,
@@ -216,43 +307,52 @@ class DataValidator:
             missing_cols = set(required_columns) - set(df.columns)
             if missing_cols:
                 is_valid = False
-                errors.append(f"Missing required columns: {missing_cols}")
+                for col in missing_cols:
+                    error_msg = f"Missing required column: {col}"
+                    if self.error_handler and ColumnValidationError:
+                        self.error_handler.add_error(ColumnValidationError(
+                            column_name=col,
+                            issue="Required column is missing",
+                            suggestion="Ensure the column exists in the dataset"
+                        ))
+                    errors.append(error_msg)
         
         # Check for completely empty columns
         null_check = df.isnull().all()
-        if hasattr(null_check, 'compute'):
-            null_check = null_check.compute()
+        null_check = _safe_compute(null_check)
         empty_cols = df.columns[null_check].tolist()
         if empty_cols:
-            warnings.append(f"Columns with all missing values: {empty_cols}")
+            warning_msg = f"Columns with all missing values: {empty_cols}"
+            if self.error_handler:
+                for col in empty_cols:
+                    self.error_handler.add_warning(f"Column '{col}' has all missing values")
+            warnings.append(warning_msg)
         
         # Calculate statistics
         null_sum = df.isnull().sum()
-        if hasattr(null_sum, 'compute'):
-            null_sum = null_sum.compute()
+        null_sum = _safe_compute(null_sum)
         missing_values_dict = {k: int(v) for k, v in null_sum.to_dict().items()}
         data_types_dict = {k: str(v) for k, v in df.dtypes.to_dict().items()}
         
-        total_nulls = null_sum.sum() if not hasattr(null_sum.sum(), 'compute') else null_sum.sum()
+        total_nulls = null_sum.sum()
         missing_values_percent = (total_nulls / (df_len * len(df.columns))) * 100 if df_len > 0 else 0.0
         
         # Calculate duplicates (use map_partitions for Dask compatibility)
         try:
-            if hasattr(df, 'map_partitions'):
+            if _is_dask_dataframe(df):
                 # For Dask DataFrames, use map_partitions
                 dup_sum = df.map_partitions(lambda x: x.duplicated().sum(), meta=('x', 'i8')).sum()
-                if hasattr(dup_sum, 'compute'):
-                    dup_sum = dup_sum.compute()
+                dup_sum = _safe_compute(dup_sum)
             else:
                 dup_sum = df.duplicated().sum()
-        except Exception:
+        except Exception as e:
             # If duplicated check fails, set to 0 with warning
+            logger.warning(f"Duplicate check failed: {e}")
             dup_sum = 0
             warnings.append("Duplicate check skipped (not supported for this operation)")
         
         mem_usage = df.memory_usage(deep=True).sum()
-        if hasattr(mem_usage, 'compute'):
-            mem_usage = mem_usage.compute()
+        mem_usage = _safe_compute(mem_usage)
         
         stats = ValidationStats(
             total_rows=df_len,
@@ -264,15 +364,36 @@ class DataValidator:
             data_types=data_types_dict
         )
 
-        # Warn about high missing data percentage
+        # Warn about high missing data percentage using DataQualityError if available
         if stats.missing_values_percent > 0.5:
-            warnings.append(
-                f"High missing data percentage: {stats.missing_values_percent:.2f}%"
-            )
+            warning_msg = f"High missing data percentage: {stats.missing_values_percent:.2f}%"
+            if self.error_handler and DataQualityError:
+                total_nulls = sum(missing_values_dict.values())
+                self.error_handler.add_error(DataQualityError(
+                    issue="High missing data percentage detected",
+                    affected_rows=int(total_nulls),
+                    total_rows=df_len,
+                    threshold=0.5
+                ))
+            warnings.append(warning_msg)
 
         # Check for duplicate rows
         if stats.duplicate_rows > 0:
-            warnings.append(f"Duplicate rows found: {stats.duplicate_rows}")
+            warning_msg = f"Duplicate rows found: {stats.duplicate_rows}"
+            if self.error_handler and DataQualityError:
+                self.error_handler.add_error(DataQualityError(
+                    issue="Duplicate rows detected",
+                    affected_rows=int(dup_sum),
+                    total_rows=df_len,
+                    threshold=0.0
+                ))
+            warnings.append(warning_msg)
+        
+        # Include error handler report in warnings if available
+        if self.error_handler and self.error_handler.has_warnings():
+            error_report = self.error_handler.get_error_report()
+            if error_report.get('warnings'):
+                warnings.extend(error_report['warnings'])
         
         return ValidationReport(
             is_valid=is_valid,
@@ -307,10 +428,7 @@ class DataLoader:
         - Empty space become empty (float64 -> float32)
         """
         initial_mem = df.memory_usage(deep=True).sum()
-        if hasattr(initial_mem, 'compute'):
-            initial_memory_usage = initial_mem.compute() / 1e6
-        else:
-            initial_memory_usage = initial_mem / 1e6
+        initial_memory_usage = _safe_compute(initial_mem) / 1e6
 
         for col in df.columns:
             col_type = df[col].dtype
@@ -319,9 +437,8 @@ class DataLoader:
             if col_type == 'int64':
                 c_min = df[col].min()
                 c_max = df[col].max()
-                if hasattr(c_min, 'compute'):
-                    c_min = c_min.compute()
-                    c_max = c_max.compute()
+                c_min = _safe_compute(c_min)
+                c_max = _safe_compute(c_max)
 
                 if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
                     df[col] = df[col].astype(np.int8)
@@ -337,22 +454,19 @@ class DataLoader:
             # Convert to category for low-cardinality object columns
             elif col_type == 'object':
                 num_unique = df[col].nunique()
-                num_total = len(df[col])
-                if hasattr(num_unique, 'compute'):
-                    num_unique_values = num_unique.compute()
-                    num_total_values = num_total.compute() if hasattr(num_total, 'compute') else num_total
+                num_unique_values = _safe_compute(num_unique)
+                # For Series, use len() directly or compute if Dask Series
+                col_series = df[col]
+                if _is_dask_dataframe(df):
+                    num_total = int(col_series.shape[0].compute())
                 else:
-                    num_unique_values = num_unique
-                    num_total_values = num_total
+                    num_total = len(col_series)
                 
-                if num_total_values > 0 and num_unique_values / num_total_values < 0.5: # Less than 50% unique values
+                if num_total > 0 and num_unique_values / num_total < 0.5: # Less than 50% unique values
                     df[col] = df[col].astype('category')
 
         final_mem = df.memory_usage(deep=True).sum()
-        if hasattr(final_mem, 'compute'):
-            final_memory_usage = final_mem.compute() / 1e6
-        else:
-            final_memory_usage = final_mem / 1e6
+        final_memory_usage = _safe_compute(final_mem) / 1e6
         
         reduction = (initial_memory_usage - final_memory_usage) / initial_memory_usage * 100 if initial_memory_usage > 0 else 0
         logger.info(
@@ -475,26 +589,24 @@ class DataLoader:
             all_errors = errors + validation_report.errors
             
             # Create metadata - compute values for Dask
-            df_len = len(df) if hasattr(df, '__len__') else df.shape[0].compute()
+            df_len = _get_dataframe_length(df)
             
             null_sum = df.isnull().sum().sum()
-            if hasattr(null_sum, 'compute'):
-                null_sum = null_sum.compute()
+            null_sum = _safe_compute(null_sum)
             missing_values_percent = (null_sum / (df_len * len(df.columns))) * 100 if df_len > 0 else 0.0
             
             mem_usage = df.memory_usage(deep=True).sum()
-            if hasattr(mem_usage, 'compute'):
-                mem_usage = mem_usage.compute()
+            mem_usage = _safe_compute(mem_usage)
             
             # Calculate duplicates (Dask-compatible)
             try:
-                if hasattr(df, 'map_partitions'):
+                if _is_dask_dataframe(df):
                     dup_count = df.map_partitions(lambda x: x.duplicated().sum(), meta=('x', 'i8')).sum()
-                    if hasattr(dup_count, 'compute'):
-                        dup_count = dup_count.compute()
+                    dup_count = _safe_compute(dup_count)
                 else:
                     dup_count = df.duplicated().sum()
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Duplicate check failed: {e}")
                 dup_count = 0
             
             metadata = ExplorationMetadata(
@@ -565,31 +677,136 @@ class DataLoader:
         - It also calculates summary statistics, such as mean, median, and standard deviation
         """
         # Compute values for Dask DataFrames
-        df_len = len(df) if hasattr(df, '__len__') else df.shape[0].compute()
+        df_len = _get_dataframe_length(df)
         
         # Compute missing values
         missing_vals = df.isnull().sum()
-        if hasattr(missing_vals, 'compute'):
-            missing_vals = missing_vals.compute()
+        missing_vals = _safe_compute(missing_vals)
         
         missing_dict = missing_vals.to_dict()
         missing_pct_dict = {k: (v / df_len * 100) if df_len > 0 else 0 for k, v in missing_dict.items()}
         
         # Compute duplicates (Dask-compatible)
         try:
-            if hasattr(df, 'map_partitions'):
+            if _is_dask_dataframe(df):
                 dup_count = df.map_partitions(lambda x: x.duplicated().sum(), meta=('x', 'i8')).sum()
-                if hasattr(dup_count, 'compute'):
-                    dup_count = dup_count.compute()
+                dup_count = _safe_compute(dup_count)
             else:
                 dup_count = df.duplicated().sum()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Duplicate check failed in statistics: {e}")
             dup_count = 0
         
+        # Compute memory usage
+        mem_usage = df.memory_usage(deep=True).sum()
+        mem_usage = _safe_compute(mem_usage)
+        mem_usage_mb = mem_usage / 1e6
+        
+        # Calculate overall missing percent
+        total_nulls = sum(missing_dict.values())
+        overall_missing_percent = (total_nulls / (df_len * len(df.columns))) * 100 if df_len > 0 else 0.0
+        
+        # Use DatasetStatistics if available
+        numeric_stats_dict = {}
+        categorical_stats_dict = {}
+        
+        if DatasetStatistics and NumericStatistics and CategoricalStatistics:
+            # Generate numeric statistics
+            numeric_columns = df.select_dtypes(include=[np.number]).columns
+            for col in numeric_columns:
+                try:
+                    col_data = df[col]
+                    col_data = _safe_compute(col_data)
+                    
+                    desc = col_data.describe()
+                    missing_count = int(missing_dict.get(col, 0))
+                    missing_pct = missing_pct_dict.get(col, 0.0)
+                    
+                    numeric_stats_dict[col] = NumericStatistics(
+                        column_name=col,
+                        count=int(df_len),
+                        mean=float(desc.get('mean', 0)) if 'mean' in desc else None,
+                        std=float(desc.get('std', 0)) if 'std' in desc else None,
+                        min=float(desc.get('min', 0)) if 'min' in desc else None,
+                        q25=float(desc.get('25%', 0)) if '25%' in desc else None,
+                        median=float(desc.get('50%', 0)) if '50%' in desc else None,
+                        q75=float(desc.get('75%', 0)) if '75%' in desc else None,
+                        max=float(desc.get('max', 0)) if 'max' in desc else None,
+                        missing_count=missing_count,
+                        missing_percent=missing_pct,
+                        outlier_count=0,  # Could be enhanced with outlier detection
+                        outlier_percent=0.0
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to generate numeric statistics for {col}: {e}")
+            
+            # Generate categorical statistics
+            categorical_columns = df.select_dtypes(exclude=[np.number]).columns
+            for col in categorical_columns:
+                try:
+                    col_data = df[col]
+                    col_data = _safe_compute(col_data)
+                    
+                    nunique = col_data.nunique()
+                    missing_count = int(missing_dict.get(col, 0))
+                    missing_pct = missing_pct_dict.get(col, 0.0)
+                    
+                    mode_val = col_data.mode()
+                    top_value = mode_val.iloc[0] if len(mode_val) > 0 else None
+                    top_frequency = int(col_data.value_counts().iloc[0]) if len(col_data.value_counts()) > 0 else 0
+                    
+                    categorical_stats_dict[col] = CategoricalStatistics(
+                        column_name=col,
+                        count=int(df_len),
+                        unique_count=int(nunique),
+                        unique_percent=(nunique / df_len * 100) if df_len > 0 else 0.0,
+                        top_value=str(top_value) if top_value is not None else None,
+                        top_frequency=top_frequency,
+                        missing_count=missing_count,
+                        missing_percent=missing_pct
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to generate categorical statistics for {col}: {e}")
+            
+            # Create DatasetStatistics
+            try:
+                dataset_stats = DatasetStatistics(
+                    total_rows=df_len,
+                    total_columns=len(df.columns),
+                    numeric_columns=numeric_stats_dict,
+                    categorical_columns=categorical_stats_dict,
+                    memory_usage_mb=mem_usage_mb,
+                    overall_missing_percent=overall_missing_percent,
+                    duplicate_rows=int(dup_count)
+                )
+                # Include dataset statistics summary in return
+                stats = {
+                    'shape': {'rows': df_len, 'columns': len(df.columns)},
+                    'columns': df.columns.to_list(),
+                    'dtypes': {k: str(v) for k, v in df.dtypes.to_dict().items()},
+                    'missing_values': missing_dict,
+                    'missing_percentage': missing_pct_dict,
+                    'duplicate_rows': int(dup_count),
+                    'dataset_statistics': dataset_stats.model_dump(),
+                    'quality_score': dataset_stats.overall_quality_score(),
+                    'summary_report': dataset_stats.summary_report()
+                }
+            except Exception as e:
+                logger.warning(f"Failed to create DatasetStatistics: {e}")
+                # Fall back to basic stats
+                stats = self._generate_basic_statistics(df, df_len, missing_dict, missing_pct_dict, dup_count, mem_usage_mb)
+        else:
+            # Fall back to basic statistics if enhancements not available
+            stats = self._generate_basic_statistics(df, df_len, missing_dict, missing_pct_dict, dup_count, mem_usage_mb)
+        
+        return stats
+    
+    def _generate_basic_statistics(self, df: dd.DataFrame, df_len: int, missing_dict: Dict, 
+                                  missing_pct_dict: Dict, dup_count: int, mem_usage_mb: float) -> Dict[str, Any]:
+        """Generate basic statistics without pydantic enhancements."""
         # Compute describe statistics
         desc_stats = df.describe()
-        if hasattr(desc_stats, 'compute'):
-            desc_stats = desc_stats.compute()
+        desc_stats = _safe_compute(desc_stats)
         
         stats = {
             'shape': {'rows': df_len, 'columns': len(df.columns)},
@@ -614,8 +831,7 @@ class DataLoader:
         numeric_columns = df.select_dtypes(include=[np.number]).columns
         if len(numeric_columns) > 0:
             numeric_desc = df.select_dtypes(include=[np.number]).describe()
-            if hasattr(numeric_desc, 'compute'):
-                numeric_desc = numeric_desc.compute()
+            numeric_desc = _safe_compute(numeric_desc)
             stats['summary_statistics']['numeric'] = numeric_desc.to_dict()
         
         # Categorical columns summary
@@ -624,12 +840,10 @@ class DataLoader:
             stats['summary_statistics']['categorical'] = {}
             for col in categorical_columns:
                 nunique = df[col].nunique()
-                if hasattr(nunique, 'compute'):
-                    nunique = nunique.compute()
+                nunique = _safe_compute(nunique)
                 
                 mode_val = df[col].mode()
-                if hasattr(mode_val, 'compute'):
-                    mode_val = mode_val.compute()
+                mode_val = _safe_compute(mode_val)
                 
                 stats['summary_statistics']['categorical'][col] = {
                     'unique_values': int(nunique),
@@ -680,52 +894,170 @@ def load_and_explore_data(
     return loader.load_and_explore_data()
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the data loader CLI."""
+    parser = argparse.ArgumentParser(
+        description='Load and explore water quality data with validation and statistics',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Load default data file
+  python scripts/data-loader.py
+  
+  # Load specific file
+  python scripts/data-loader.py --file data/my_data.csv
+  
+  # Load with custom chunk size
+  python scripts/data-loader.py --file data/large_data.csv --chunk-size 10000
+  
+  # Load with custom output path
+  python scripts/data-loader.py --file data/my_data.csv --output export/my_report.json
+  
+  # Load with verbose logging
+  python scripts/data-loader.py --file data/my_data.csv --log-level DEBUG
+        """
+    )
+    
+    parser.add_argument(
+        '--file', '-f',
+        type=str,
+        default=None,
+        help='Path to the CSV file to load (default: data/national_water_plan.csv)'
+    )
+    
+    parser.add_argument(
+        '--output', '-o',
+        type=str,
+        default=None,
+        help='Path to save the exploration report JSON (default: export/data_exploration_report.json)'
+    )
+    
+    parser.add_argument(
+        '--chunk-size',
+        type=int,
+        default=None,
+        help='Number of rows to read at a time for chunked loading (default: auto-detect)'
+    )
+    
+    parser.add_argument(
+        '--max-memory-mb',
+        type=int,
+        default=500,
+        help='Maximum memory usage in MB before switching to chunked loading (default: 500)'
+    )
+    
+    parser.add_argument(
+        '--no-dtype-optimization',
+        action='store_true',
+        help='Disable data type optimization for memory efficiency'
+    )
+    
+    parser.add_argument(
+        '--log-level',
+        type=str,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default='INFO',
+        help='Set the logging level (default: INFO)'
+    )
+    
+    parser.add_argument(
+        '--show-head',
+        action='store_true',
+        default=True,
+        help='Show first 5 rows of the loaded data (default: True)'
+    )
+    
+    parser.add_argument(
+        '--no-show-head',
+        dest='show_head',
+        action='store_false',
+        help='Do not show first 5 rows of the loaded data'
+    )
+    
+    args = parser.parse_args()
+    
     # Configure logging
+    log_level = getattr(logging, args.log_level.upper())
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Define the path to the data file
-    data_path = Path(__file__).parent.parent / 'data' / 'national_water_plan.csv'
+    # Determine input file path
+    if args.file:
+        data_path = Path(args.file)
+        if not data_path.is_absolute():
+            data_path = Path(__file__).parent.parent / args.file
+    else:
+        data_path = Path(__file__).parent.parent / 'data' / 'national_water_plan.csv'
+    
+    # Determine output path
+    if args.output:
+        output_path = Path(args.output)
+        if not output_path.is_absolute():
+            output_path = Path(__file__).parent.parent / args.output
+    else:
+        output_path = Path(__file__).parent.parent / 'export' / 'data_exploration_report.json'
+    
+    # Create output directory if it doesn't exist
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     
     print(f"Loading data from: {data_path}")
     
+    # Create configuration
+    config_kwargs = {
+        'filepath': str(data_path),
+        'dtype_optimization': not args.no_dtype_optimization,
+        'max_memory_mb': args.max_memory_mb
+    }
+    
+    if args.chunk_size:
+        config_kwargs['chunk_size'] = args.chunk_size
+    
     # Load and explore the data
-    df, report = load_and_explore_data(filepath=str(data_path))
-    
-    # Print summary
-    print("\n" + "="*80)
-    print("DATA LOADING SUMMARY")
-    print("="*80)
-    print(f"Rows: {report.metadata.rows:,}")
-    print(f"Columns: {report.metadata.columns}")
-    print(f"Memory Usage: {report.metadata.memory_usage:.2f} MB")
-    print(f"Missing Values: {report.metadata.missing_values_percent:.2f}%")
-    print(f"Duplicate Rows: {report.metadata.duplicate_rows}")
-    print(f"Duration: {report.duration:.2f} seconds")
-    
-    if report.warnings:
-        print(f"\nWarnings ({len(report.warnings)}):")
-        for warning in report.warnings:
-            print(f"  ⚠️  {warning}")
-    
-    if report.errors:
-        print(f"\nErrors ({len(report.errors)}):")
-        for error in report.errors:
-            print(f"  ❌ {error}")
-    
-    print("\n" + "="*80)
-    print(f"First 5 rows:")
-    print("="*80)
-    # Dask's head() already returns computed pandas DataFrame
-    print(df.head())
-    
-    # Save the report
-    output_path = Path(__file__).parent.parent / 'export' / 'data_exploration_report.json'
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    loader = DataLoader()
-    loader.save_exploration_report(report, str(output_path))
-    print(f"\n📄 Report saved to: {output_path}")
+    try:
+        df, report = load_and_explore_data(**config_kwargs)
+        
+        # Print summary
+        print("\n" + "="*80)
+        print("DATA LOADING SUMMARY")
+        print("="*80)
+        print(f"Rows: {report.metadata.rows:,}")
+        print(f"Columns: {report.metadata.columns}")
+        print(f"Memory Usage: {report.metadata.memory_usage:.2f} MB")
+        print(f"Missing Values: {report.metadata.missing_values_percent:.2f}%")
+        print(f"Duplicate Rows: {report.metadata.duplicate_rows}")
+        print(f"Duration: {report.duration:.2f} seconds")
+        
+        if report.warnings:
+            print(f"\nWarnings ({len(report.warnings)}):")
+            for warning in report.warnings:
+                print(f"  ⚠️  {warning}")
+        
+        if report.errors:
+            print(f"\nErrors ({len(report.errors)}):")
+            for error in report.errors:
+                print(f"  ❌ {error}")
+        
+        if args.show_head:
+            print("\n" + "="*80)
+            print(f"First 5 rows:")
+            print("="*80)
+            # Dask's head() already returns computed pandas DataFrame
+            print(df.head())
+        
+        # Save the report
+        loader = DataLoader()
+        loader.save_exploration_report(report, str(output_path))
+        print(f"\n📄 Report saved to: {output_path}")
+        
+        return 0
+        
+    except Exception as e:
+        logger.error(f"Failed to load data: {e}", exc_info=True)
+        print(f"\n❌ Error: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    exit(main())

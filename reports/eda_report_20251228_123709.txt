@@ -1,0 +1,51 @@
+================================================================================
+                       Water Quality Exploratory Analysis                       
+                     Generated: 2025-12-28T12:37:09.555931                      
+--------------------------------------------------------------------------------
+
+📊 SUMMARY STATISTICS
+--------------------------------------------------------------------------------
+Total sites analyzed: 8,944
+Number of companies: 9
+Number of regions: 10
+Total annual spills: 254,732
+Average annual spills: 28.48
+Median annual spills: 20.33
+Standard deviation: 27.05
+Minimum annual spills: 0.00
+Maximum annual spills: 133.33
+
+📈 PERCENTILE BREAKDOWN
+--------------------------------------------------------------------------------
+25th percentile: 6.00
+75th percentile: 43.67
+90th percentile: 68.33
+95th percentile: 84.33
+99th percentile: 108.00
+
+📉 TREND ANALYSIS
+--------------------------------------------------------------------------------
+Overall trend: -8.4472
+Sites improving: 5222 (58.4%)
+Sites worsening: 2807 (31.4%)
+Sites stable: 915 (10.2%)
+
+🏢 TOP 5 COMPANIES BY AVERAGE SPILLS
+--------------------------------------------------------------------------------
+1. United Utilities: 47.54 (Sites: 1196, Total: 56859)
+2. Yorkshire Water: 33.56 (Sites: 1417, Total: 47560)
+3. Northumbrian Water: 29.75 (Sites: 896, Total: 26660)
+4. South West Water: 28.85 (Sites: 914, Total: 26369)
+5. Thames Water: 28.33 (Sites: 434, Total: 12295)
+
+🌍 TOP 5 REGIONS BY AVERAGE SPILLS
+--------------------------------------------------------------------------------
+1. North West: 47.74 (Sites: 1088, Total: 51941)
+2. Solway Tweed: 40.30 (Sites: 144, Total: 5803)
+3. Northumbria: 29.98 (Sites: 859, Total: 25754)
+4. Humber: 27.22 (Sites: 2798, Total: 76154)
+5. Dee: 26.83 (Sites: 2, Total: 54)
+
+================================================================================
+Processing time: 11.81 seconds
+================================================================================

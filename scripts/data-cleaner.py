@@ -4,54 +4,71 @@ Purpose: Clean and preprocess water quality data with Pydantic validation and Da
 """
 
 import dask.dataframe as dd
+import dask
 import pandas as pd
 import numpy as np
 import logging
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional, List, Union
+from typing import Dict, Any, Tuple, Optional, List, Union, TYPE_CHECKING, cast
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 
-# Import from data_loader module
-try:
-    from data_loader import (
-        DataConfig, DataLoader, ValidationReport,
-        ExplorationMetadata, ValidationMetadata, ValidationStats
-    )
-except ImportError:
-    # Handle hyphenated module name
-    import importlib.util
-    import sys
-    data_loader_path = Path(__file__).parent / "data-loader.py"
-    spec = importlib.util.spec_from_file_location("data_loader", data_loader_path)
-    data_loader = importlib.util.module_from_spec(spec)
-    sys.modules["data_loader"] = data_loader
-    spec.loader.exec_module(data_loader)
-    
-    DataConfig = data_loader.DataConfig
-    DataLoader = data_loader.DataLoader
-    ValidationReport = data_loader.ValidationReport
-    ExplorationMetadata = data_loader.ExplorationMetadata
-    ValidationMetadata = data_loader.ValidationMetadata
-    ValidationStats = data_loader.ValidationStats
+if TYPE_CHECKING:
+    from pydantic_enhancements import ApplicationSettings, DataValidationError, DatasetStatistics
+else:
+    ApplicationSettings = Any  # type: ignore
+    DataValidationError = Any  # type: ignore
+    DatasetStatistics = Any  # type: ignore
+
+# Import from data_loader module (handles hyphenated filename)
+import importlib.util
+import sys
+data_loader_path = Path(__file__).parent / "data-loader.py"
+spec = importlib.util.spec_from_file_location("data_loader", data_loader_path)
+if spec is None:
+    raise ImportError(f"Could not load module from {data_loader_path}")
+if spec.loader is None:
+    raise ImportError(f"Module spec has no loader for {data_loader_path}")
+loader = spec.loader
+data_loader = importlib.util.module_from_spec(spec)
+sys.modules["data_loader"] = data_loader
+loader.exec_module(data_loader)
+
+DataConfig = data_loader.DataConfig
+DataLoader = data_loader.DataLoader
+ValidationReport = data_loader.ValidationReport
+ExplorationMetadata = data_loader.ExplorationMetadata
+ValidationMetadata = data_loader.ValidationMetadata
+ValidationStats = data_loader.ValidationStats
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 # Import Pydantic enhancements
 try:
     from pydantic_enhancements import (
         ColumnNameValidator, NumericStatistics, CategoricalStatistics,
         DatasetStatistics, ErrorHandler, ColumnValidationError,
-        RangeValidationError, DataQualityError, ApplicationSettings,
+        RangeValidationError, DataQualityError, DataValidationError,
+        ApplicationSettings as _ApplicationSettings,
         load_settings
     )
+    _ApplicationSettingsRuntime = _ApplicationSettings
 except ImportError:
     logger.warning("Pydantic enhancements module not available. Using basic features only.")
     ColumnNameValidator = None
     ErrorHandler = None
-
-# Configure module logger
-logger = logging.getLogger(__name__)
+    NumericStatistics = None
+    CategoricalStatistics = None
+    DatasetStatistics = None
+    ColumnValidationError = Exception
+    RangeValidationError = Exception
+    DataQualityError = Exception
+    DataValidationError = Exception
+    _ApplicationSettingsRuntime = None
+    load_settings = None
 
 
 class DataCleanerConfig(BaseModel):
@@ -60,7 +77,7 @@ class DataCleanerConfig(BaseModel):
     
     # Column Configuration
     required_columns: List[str] = Field(
-        default_factory=lambda: ['Latitude', 'Longitude', 'Water Company', 'River Basin District'],
+        default_factory=lambda: ['Latitude', 'Longitude', 'Water company', 'River Basin District'],
         description="Columns that must be present in the dataset"
     )
     optional_columns: List[str] = Field(
@@ -79,7 +96,7 @@ class DataCleanerConfig(BaseModel):
         description="Spill event columns by year"
     )
     text_columns: List[str] = Field(
-        default_factory=lambda: ['Water Company', 'River Basin District', 'Site Name', 'Receiving Environment'],
+        default_factory=lambda: ['Water company', 'River Basin District', 'Site Name', 'Receiving Environment'],
         description="Text columns to validate"
     )
     numeric_columns: List[str] = Field(
@@ -227,7 +244,7 @@ class WaterDataCleaner:
     Performs comprehensive data cleaning operations using parallel processing.
     """
 
-    def __init__(self, config: Optional[DataCleanerConfig] = None, settings: Optional[ApplicationSettings] = None):
+    def __init__(self, config: Optional[DataCleanerConfig] = None, settings: Optional["ApplicationSettings"] = None):
         """Initialize cleaner with configuration."""
         self.config = config or DataCleanerConfig()
         self.settings = settings
@@ -273,13 +290,16 @@ class WaterDataCleaner:
                 logger.warning(msg)
             
             # Log suggestions for corrections
-            for suggestion in results.get('suggestions', []):
-                col = suggestion['column']
-                suggestions = suggestion['suggestions']
-                msg = f"Column '{col}' may have typo. Suggestions: {suggestions}"
-                if self.error_handler:
-                    self.error_handler.add_warning(msg)
-                logger.info(msg)
+            suggestions_raw = results.get('suggestions', [])
+            suggestions_list: List[Dict[str, Any]] = cast(List[Dict[str, Any]], suggestions_raw)
+            for suggestion_dict in suggestions_list:
+                if isinstance(suggestion_dict, dict):
+                    col = str(suggestion_dict.get('column', ''))
+                    suggestions = list(suggestion_dict.get('suggestions', []))
+                    msg = f"Column '{col}' may have typo. Suggestions: {suggestions}"
+                    if self.error_handler:
+                        self.error_handler.add_warning(msg)
+                    logger.info(msg)
                 
         except Exception as e:
             logger.warning(f"Column name validation failed: {e}")
@@ -302,11 +322,12 @@ class WaterDataCleaner:
         if missing_required:
             msg = f"Missing required columns: {missing_required}"
             logger.warning(msg)
-            if self.error_handler:
+            if self.error_handler and ColumnValidationError is not Exception:
                 for col in missing_required:
-                    self.error_handler.add_error(
-                        ColumnValidationError(col, "Required column is missing")
-                    )
+                    error_instance = ColumnValidationError(col, "Required column is missing")
+                    # When ColumnValidationError is not Exception, it's a subclass of DataValidationError
+                    # Runtime check ensures type safety, but type checker needs help
+                    self.error_handler.add_error(error_instance)  # type: ignore[arg-type]
         
         if missing_optional:
             logger.info(f"Missing optional columns: {missing_optional}")
@@ -332,14 +353,13 @@ class WaterDataCleaner:
                 self.report.removal_breakdown['missing_coordinates'] = missing_coords_removed
             
             # Enhancement 3: Use custom error for data quality issues
-            if self.error_handler and DataQualityError:
-                self.error_handler.add_error(
-                    DataQualityError(
-                        "Missing geographic coordinates",
-                        missing_coords_removed,
-                        initial_len
-                    )
+            if self.error_handler and DataQualityError is not Exception:
+                error_instance = DataQualityError(
+                    "Missing geographic coordinates",
+                    missing_coords_removed,
+                    initial_len
                 )
+                self.error_handler.add_error(error_instance)  # type: ignore[arg-type]
         
         # Validate latitude
         if 'Latitude' in df.columns:
@@ -353,15 +373,14 @@ class WaterDataCleaner:
                     self.report.removal_breakdown['invalid_latitude'] = int(invalid_lat_count)
                 
                 # Enhancement 3: Use custom range validation error
-                if self.error_handler and RangeValidationError:
-                    self.error_handler.add_error(
-                        RangeValidationError(
-                            'Latitude',
-                            f"{invalid_lat_count} values",
-                            self.config.lat_min,
-                            self.config.lat_max
-                        )
+                if self.error_handler and RangeValidationError is not Exception:
+                    error_instance = RangeValidationError(
+                        'Latitude',
+                        f"{invalid_lat_count} values",
+                        self.config.lat_min,
+                        self.config.lat_max
                     )
+                    self.error_handler.add_error(error_instance)  # type: ignore[arg-type]
         
         # Validate longitude
         if 'Longitude' in df.columns:
@@ -375,15 +394,14 @@ class WaterDataCleaner:
                     self.report.removal_breakdown['invalid_longitude'] = int(invalid_lon_count)
                 
                 # Enhancement 3: Use custom range validation error
-                if self.error_handler and RangeValidationError:
-                    self.error_handler.add_error(
-                        RangeValidationError(
-                            'Longitude',
-                            f"{invalid_lon_count} values",
-                            self.config.lon_min,
-                            self.config.lon_max
-                        )
+                if self.error_handler and RangeValidationError is not Exception:
+                    error_instance = RangeValidationError(
+                        'Longitude',
+                        f"{invalid_lon_count} values",
+                        self.config.lon_min,
+                        self.config.lon_max
                     )
+                    self.error_handler.add_error(error_instance)  # type: ignore[arg-type]
         
         return df
 
@@ -417,7 +435,7 @@ class WaterDataCleaner:
         
         # Remove rows with insufficient valid spill years
         if self.config.remove_invalid_spill_years:
-            valid_counts = df[existing_spill_cols].notna().sum(axis=1)
+            valid_counts = (~df[existing_spill_cols].isnull()).sum(axis=1)
             invalid_mask = valid_counts < self.config.min_valid_spill_years
             invalid_count = invalid_mask.sum().compute()
             
@@ -442,7 +460,7 @@ class WaterDataCleaner:
             df[col] = df[col].replace('', np.nan)
         
         if self.config.remove_invalid_text_values:
-            text_valid_mask = df[existing_text_cols].notna().any(axis=1)
+            text_valid_mask = (~df[existing_text_cols].isnull()).any(axis=1)
             invalid_count = (~text_valid_mask).sum().compute()
             
             if invalid_count > 0:
@@ -488,9 +506,9 @@ class WaterDataCleaner:
         
         return df
     
-    def _generate_statistics(self, df: dd.DataFrame) -> Optional[DatasetStatistics]:
-        """Generate comprehensive statistics using Pydantic models (Enhancement 2)."""
-        if not DatasetStatistics:
+    def _generate_statistics(self, df: dd.DataFrame) -> Optional[Any]:  # type: ignore[assignment]
+        """Generate comprehensive statistics using Pydantic models (Enhancement 2) - Optimized."""
+        if not DatasetStatistics or not NumericStatistics or not CategoricalStatistics:
             return None
         
         try:
@@ -500,74 +518,263 @@ class WaterDataCleaner:
             numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
             categorical_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
             
+            # Optimization: Convert to pandas if dataset is small enough (faster for small data)
+            # Threshold: 50k rows or less
+            use_pandas = df_len <= 50000
+            
+            if use_pandas:
+                logger.info(f"Dataset size ({df_len} rows) is small enough, using pandas for faster statistics")
+                df_pd = df.compute()
+            else:
+                df_pd = None
+            
             numeric_stats = {}
             categorical_stats = {}
             
-            # Generate numeric statistics
-            for col in numeric_cols:
-                try:
-                    col_data = df[col]
-                    count = col_data.count().compute()
-                    missing = df_len - count
-                    missing_pct = (missing / df_len * 100) if df_len > 0 else 0
+            # Generate numeric statistics - batch compute all stats at once
+            if numeric_cols:
+                if use_pandas and df_pd is not None:
+                    # Use pandas describe() for fast computation
+                    assert df_pd is not None  # Type narrowing for type checker
+                    desc = df_pd[numeric_cols].describe()
+                    counts = df_pd[numeric_cols].count()
+                    missing_counts = df_len - counts
                     
-                    if count > 0:
-                        numeric_stats[col] = NumericStatistics(
-                            column_name=col,
-                            count=int(count),
-                            mean=float(col_data.mean().compute()),
-                            std=float(col_data.std().compute()),
-                            min=float(col_data.min().compute()),
-                            median=float(col_data.quantile(0.5).compute()),
-                            q25=float(col_data.quantile(0.25).compute()),
-                            q75=float(col_data.quantile(0.75).compute()),
-                            max=float(col_data.max().compute()),
-                            missing_count=int(missing),
-                            missing_percent=float(missing_pct)
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to generate statistics for {col}: {e}")
-            
-            # Generate categorical statistics
-            for col in categorical_cols:
-                try:
-                    col_data = df[col]
-                    count = col_data.count().compute()
-                    missing = df_len - count
-                    missing_pct = (missing / df_len * 100) if df_len > 0 else 0
+                    for col in numeric_cols:
+                        try:
+                            count = int(counts[col])
+                            missing = int(missing_counts[col])
+                            missing_pct = (missing / df_len * 100) if df_len > 0 else 0
+                            
+                            if count > 0 and NumericStatistics is not None:
+                                numeric_stats[col] = NumericStatistics(
+                                    column_name=col,
+                                    count=count,
+                                    mean=float(desc.loc['mean', col]),
+                                    std=float(desc.loc['std', col]),
+                                    min=float(desc.loc['min', col]),
+                                    median=float(desc.loc['50%', col]),
+                                    q25=float(desc.loc['25%', col]),
+                                    q75=float(desc.loc['75%', col]),
+                                    max=float(desc.loc['max', col]),
+                                    missing_count=missing,
+                                    missing_percent=float(missing_pct)
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to generate statistics for {col}: {e}")
+                else:
+                    # Batch compute all numeric statistics using dask.compute()
+                    # Process columns in batches to avoid memory issues
+                    logger.info(f"Batch computing statistics for {len(numeric_cols)} numeric columns...")
                     
-                    if count > 0:
-                        nunique = col_data.nunique().compute()
-                        mode_val = col_data.mode().compute()
-                        top_value = mode_val.iloc[0] if len(mode_val) > 0 else None
+                    batch_size = 5  # Process 5 columns at a time
+                    for batch_start in range(0, len(numeric_cols), batch_size):
+                        batch_cols = numeric_cols[batch_start:batch_start + batch_size]
+                        logger.info(f"Processing columns {batch_start + 1}-{min(batch_start + batch_size, len(numeric_cols))} of {len(numeric_cols)}...")
                         
-                        # Get frequency of top value
-                        top_freq = 0
-                        if top_value:
-                            top_freq = int((col_data == top_value).sum().compute())
+                        # Prepare all computations for this batch
+                        all_tasks = []
+                        task_map = {}  # Map to track which task belongs to which column/stat
                         
-                        categorical_stats[col] = CategoricalStatistics(
-                            column_name=col,
-                            count=int(count),
-                            unique_count=int(nunique),
-                            unique_percent=float(nunique / count * 100) if count > 0 else 0,
-                            top_value=str(top_value) if top_value else None,
-                            top_frequency=top_freq,
-                            missing_count=int(missing),
-                            missing_percent=float(missing_pct)
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to generate statistics for {col}: {e}")
+                        for col in batch_cols:
+                            col_data = df[col]
+                            tasks = [
+                                col_data.count(),
+                                col_data.mean(),
+                                col_data.std(),
+                                col_data.min(),
+                                col_data.quantile(0.25),
+                                col_data.quantile(0.5),
+                                col_data.quantile(0.75),
+                                col_data.max()
+                            ]
+                            all_tasks.extend(tasks)
+                            task_map[col] = len(all_tasks) - len(tasks)
+                        
+                        # Compute all stats for this batch in one go
+                        try:
+                            results = dask.compute(*all_tasks)
+                            
+                            # Process results for each column in this batch
+                            for col in batch_cols:
+                                try:
+                                    idx = task_map[col]
+                                    count, mean, std, min_val, q25, median, q75, max_val = results[idx:idx+8]
+                                    
+                                    count = int(count)
+                                    missing = df_len - count
+                                    missing_pct = (missing / df_len * 100) if df_len > 0 else 0
+                                    
+                                    if count > 0 and NumericStatistics is not None:
+                                        numeric_stats[col] = NumericStatistics(
+                                            column_name=col,
+                                            count=count,
+                                            mean=float(mean),
+                                            std=float(std),
+                                            min=float(min_val),
+                                            median=float(median),
+                                            q25=float(q25),
+                                            q75=float(q75),
+                                            max=float(max_val),
+                                            missing_count=int(missing),
+                                            missing_percent=float(missing_pct)
+                                        )
+                                except Exception as e:
+                                    logger.warning(f"Failed to generate statistics for {col}: {e}")
+                        except Exception as e:
+                            logger.warning(f"Failed to compute batch for columns {batch_cols}: {e}")
             
-            # Calculate overall metrics
-            mem_usage = df.memory_usage(deep=True).sum().compute() / 1e6
-            null_sum = df.isnull().sum().sum().compute()
-            overall_missing_pct = (null_sum / (df_len * len(df.columns)) * 100) if df_len > 0 else 0
+            # Generate categorical statistics - batch compute
+            if categorical_cols:
+                if use_pandas and df_pd is not None:
+                    # Use pandas for fast computation
+                    assert df_pd is not None  # Type narrowing for type checker
+                    for col in categorical_cols:
+                        try:
+                            col_data = df_pd[col]
+                            count = int(col_data.count())
+                            missing = df_len - count
+                            missing_pct = (missing / df_len * 100) if df_len > 0 else 0
+                            
+                            if count > 0 and CategoricalStatistics is not None:
+                                nunique = int(col_data.nunique())
+                                mode_val = col_data.mode()
+                                top_value = mode_val.iloc[0] if len(mode_val) > 0 else None
+                                top_freq = int((col_data == top_value).sum()) if top_value else 0
+                                
+                                categorical_stats[col] = CategoricalStatistics(
+                                    column_name=col,
+                                    count=count,
+                                    unique_count=nunique,
+                                    unique_percent=float(nunique / count * 100) if count > 0 else 0,
+                                    top_value=str(top_value) if top_value else None,
+                                    top_frequency=top_freq,
+                                    missing_count=int(missing),
+                                    missing_percent=float(missing_pct)
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to generate statistics for {col}: {e}")
+                else:
+                    # Batch compute categorical statistics
+                    logger.info(f"Batch computing statistics for {len(categorical_cols)} categorical columns...")
+                    
+                    batch_size = 10  # Process 10 categorical columns at a time (lighter operations)
+                    for batch_start in range(0, len(categorical_cols), batch_size):
+                        batch_cols = categorical_cols[batch_start:batch_start + batch_size]
+                        logger.info(f"Processing columns {batch_start + 1}-{min(batch_start + batch_size, len(categorical_cols))} of {len(categorical_cols)}...")
+                        
+                        # Prepare all computations for this batch
+                        all_tasks = []
+                        task_map = {}
+                        
+                        for col in batch_cols:
+                            col_data = df[col]
+                            tasks = [
+                                col_data.count(),
+                                col_data.nunique(),
+                                col_data.mode()
+                            ]
+                            all_tasks.extend(tasks)
+                            task_map[col] = {
+                                'idx': len(all_tasks) - len(tasks),
+                                'col_data': col_data
+                            }
+                        
+                        # Compute count, nunique, and mode for all columns in batch
+                        try:
+                            results = dask.compute(*all_tasks)
+                            
+                            # Process results and prepare frequency computations
+                            freq_computations = []
+                            
+                            for col in batch_cols:
+                                try:
+                                    idx = task_map[col]['idx']
+                                    count, nunique, mode_val = results[idx:idx+3]
+                                    
+                                    count = int(count)
+                                    missing = df_len - count
+                                    missing_pct = (missing / df_len * 100) if df_len > 0 else 0
+                                    
+                                    if count > 0 and CategoricalStatistics is not None:
+                                        nunique = int(nunique)
+                                        top_value = mode_val.iloc[0] if len(mode_val) > 0 else None
+                                        
+                                        # Prepare frequency computation if needed
+                                        if top_value:
+                                            freq_computations.append(
+                                                (task_map[col]['col_data'] == top_value).sum()
+                                            )
+                                        
+                                        # Store intermediate results
+                                        task_map[col]['stats'] = {
+                                            'count': count,
+                                            'nunique': nunique,
+                                            'top_value': top_value,
+                                            'missing': missing,
+                                            'missing_pct': missing_pct,
+                                            'freq_idx': len(freq_computations) - 1 if top_value else None
+                                        }
+                                except Exception as e:
+                                    logger.warning(f"Failed to process results for {col}: {e}")
+                            
+                            # Compute frequencies in batch
+                            if freq_computations:
+                                freq_results = dask.compute(*freq_computations)
+                                
+                                # Create stats for all columns in batch
+                                for col in batch_cols:
+                                    if 'stats' in task_map[col]:
+                                        stats = task_map[col]['stats']
+                                        
+                                        # Get frequency if top_value exists
+                                        if stats['freq_idx'] is not None:
+                                            top_freq = int(freq_results[stats['freq_idx']])
+                                        else:
+                                            top_freq = 0
+                                        
+                                        if CategoricalStatistics is not None:
+                                            categorical_stats[col] = CategoricalStatistics(
+                                                column_name=col,
+                                                count=stats['count'],
+                                                unique_count=stats['nunique'],
+                                                unique_percent=float(stats['nunique'] / stats['count'] * 100) if stats['count'] > 0 else 0,
+                                                top_value=str(stats['top_value']) if stats['top_value'] else None,
+                                                top_frequency=top_freq,
+                                                missing_count=int(stats['missing']),
+                                                missing_percent=float(stats['missing_pct'])
+                                            )
+                            else:
+                                # No frequencies to compute, create stats without top_freq
+                                for col in batch_cols:
+                                    if 'stats' in task_map[col]:
+                                        stats = task_map[col]['stats']
+                                        if CategoricalStatistics is not None:
+                                            categorical_stats[col] = CategoricalStatistics(
+                                                column_name=col,
+                                                count=stats['count'],
+                                                unique_count=stats['nunique'],
+                                                unique_percent=float(stats['nunique'] / stats['count'] * 100) if stats['count'] > 0 else 0,
+                                                top_value=str(stats['top_value']) if stats['top_value'] else None,
+                                                top_frequency=0,
+                                                missing_count=int(stats['missing']),
+                                                missing_percent=float(stats['missing_pct'])
+                                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to compute batch for categorical columns {batch_cols}: {e}")
             
-            try:
-                dup_count = df.map_partitions(lambda x: x.duplicated().sum(), meta=('x', 'i8')).sum().compute()
-            except:
-                dup_count = 0
+            # Calculate overall metrics - batch compute
+            logger.info("Computing overall metrics...")
+            mem_usage, null_sum, dup_count = dask.compute(
+                df.memory_usage(deep=True).sum() / 1e6,
+                df.isnull().sum().sum(),
+                df.map_partitions(lambda x: x.duplicated().sum(), meta=('x', 'i8')).sum()
+            )
+            
+            overall_missing_pct = (float(null_sum) / (df_len * len(df.columns)) * 100) if df_len > 0 else 0
+            
+            if DatasetStatistics is None:
+                return None
             
             stats = DatasetStatistics(
                 total_rows=df_len,
@@ -611,7 +818,8 @@ class WaterDataCleaner:
             df = dd.from_pandas(df, npartitions=n_partitions)
         
         output_dir = output_dir or self.config.output_directory
-        self._create_backup(df, output_dir)
+        # At this point, df is guaranteed to be a dd.DataFrame after conversion above
+        self._create_backup(cast(dd.DataFrame, df), output_dir)
         
         # Collect initial statistics
         logger.info("Collecting initial statistics")
@@ -645,8 +853,11 @@ class WaterDataCleaner:
         
         try:
             # Cleaning steps
+            # At this point, df is guaranteed to be a dd.DataFrame after conversion above
+            df_dask = cast(dd.DataFrame, df)
+            
             logger.info("Step 1: Validating columns")
-            avail_req, miss_req, _, _ = self._validate_columns(df)
+            avail_req, miss_req, _, _ = self._validate_columns(df_dask)
             
             if miss_req and self.config.strict_mode:
                 error_msg = f"Missing required columns: {miss_req}"
@@ -654,7 +865,7 @@ class WaterDataCleaner:
                 raise ValueError(error_msg)
             
             logger.info("Step 2: Cleaning coordinates")
-            df = self._clean_coordinates(df)
+            df = self._clean_coordinates(df_dask)
             
             logger.info("Step 3: Cleaning spill events")
             df = self._clean_spill_events(df)
@@ -755,7 +966,7 @@ class WaterDataCleaner:
 
 def clean_water_data_with_settings(
     filepath: str,
-    settings: Optional[ApplicationSettings] = None,
+    settings: Optional["ApplicationSettings"] = None,
     env_file: Optional[Path] = None
 ) -> Tuple[dd.DataFrame, CleaningReport]:
     """
@@ -771,18 +982,19 @@ def clean_water_data_with_settings(
     """
     # Load settings from environment or .env file
     if settings is None:
-        settings = load_settings(env_file) if load_settings else ApplicationSettings()
+        settings = load_settings(env_file) if load_settings else (_ApplicationSettingsRuntime() if _ApplicationSettingsRuntime else None)
     
     # Configure logging
-    if hasattr(settings, 'configure_logging'):
-        settings.configure_logging()
+    if settings is not None:
+        if hasattr(settings, 'configure_logging'):
+            settings.configure_logging()  # type: ignore[union-attr]
+        logger.info(f"Using {settings.app_name} v{settings.app_version}")  # type: ignore[union-attr]
     
-    logger.info(f"Using {settings.app_name} v{settings.app_version}")
     logger.info(f"Loading data from {filepath}")
     
     # Load data using DataLoader with settings
-    if hasattr(settings, 'to_loader_config'):
-        loader_config_dict = settings.to_loader_config()
+    if settings is not None and hasattr(settings, 'to_loader_config'):
+        loader_config_dict = settings.to_loader_config()  # type: ignore[misc]
         loader_config_dict['filepath'] = filepath
         data_config = DataConfig(**loader_config_dict)
     else:
@@ -793,15 +1005,18 @@ def clean_water_data_with_settings(
     logger.info("Data loaded successfully")
     
     # Create cleaner configuration from settings
-    if hasattr(settings, 'to_cleaner_config'):
-        cleaner_config_dict = settings.to_cleaner_config()
+    if settings is not None and hasattr(settings, 'to_cleaner_config'):
+        cleaner_config_dict = settings.to_cleaner_config()  # type: ignore[misc]
         cleaner_config = DataCleanerConfig(**cleaner_config_dict)
     else:
         cleaner_config = DataCleanerConfig()
     
     # Clean the data
     cleaner = WaterDataCleaner(cleaner_config, settings=settings)
-    cleaned_df, cleaning_report = cleaner.clean_data(df, str(settings.export_directory))
+    if settings is not None:
+        cleaned_df, cleaning_report = cleaner.clean_data(df, str(settings.export_directory))  # type: ignore[misc]
+    else:
+        cleaned_df, cleaning_report = cleaner.clean_data(df)
     
     return cleaned_df, cleaning_report
 

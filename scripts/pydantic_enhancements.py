@@ -4,8 +4,8 @@ Additional validators, models, and error handlers for water quality data process
 """
 
 import re
-from typing import Dict, Any, List, Optional, Union, ClassVar
-from pydantic import BaseModel, Field, field_validator, ValidationError, ConfigDict
+from typing import Dict, Any, List, Optional, Union, ClassVar, TYPE_CHECKING
+from pydantic import BaseModel, Field, field_validator, model_validator, ValidationError, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 import logging
@@ -521,6 +521,383 @@ class ApplicationSettings(BaseSettings):
 
 
 # ============================================================================
+# Enhancement 5: ML Model Configuration Validators
+# ============================================================================
+
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None
+
+try:
+    import dask.dataframe as dd
+    DASK_AVAILABLE = True
+except ImportError:
+    DASK_AVAILABLE = False
+    dd = None
+
+
+class ModelHyperparameterConfig(BaseModel):
+    """
+    Pydantic model for validating ML model hyperparameters.
+    
+    Provides type-safe validation for common hyperparameters used in ML models.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    # Ensemble model parameters
+    n_estimators: Optional[int] = Field(default=None, gt=0, description="Number of estimators (must be > 0)")
+    max_depth: Optional[int] = Field(default=None, gt=0, description="Maximum depth (must be > 0)")
+    min_samples_split: Optional[int] = Field(default=None, ge=2, description="Minimum samples to split (must be >= 2)")
+    min_samples_leaf: Optional[int] = Field(default=None, ge=1, description="Minimum samples per leaf (must be >= 1)")
+    
+    # Learning parameters
+    learning_rate: Optional[float] = Field(default=None, gt=0.0, le=1.0, description="Learning rate (0 < lr <= 1)")
+    alpha: Optional[float] = Field(default=None, ge=0.0, description="Regularization parameter (must be >= 0)")
+    l1_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="L1 ratio for elastic net (0 <= ratio <= 1)")
+    
+    # Random state
+    random_state: Optional[int] = Field(default=None, ge=0, description="Random seed (must be >= 0)")
+    
+    # Test/train split
+    test_size: Optional[float] = Field(default=None, gt=0.0, lt=1.0, description="Test size proportion (0 < size < 1)")
+    
+    @model_validator(mode='after')
+    def validate_hyperparameter_combinations(self) -> 'ModelHyperparameterConfig':
+        """Validate that hyperparameter combinations are reasonable."""
+        # Validate learning rate with n_estimators for gradient boosting
+        if self.learning_rate is not None and self.n_estimators is not None:
+            if self.learning_rate < 0.01 and self.n_estimators < 50:
+                logger.warning("Very low learning rate with few estimators may result in poor performance")
+        
+        # Validate max_depth with min_samples_split
+        if self.max_depth is not None and self.min_samples_split is not None:
+            if self.min_samples_split > (2 ** self.max_depth):
+                raise ValueError(
+                    f"min_samples_split ({self.min_samples_split}) is too large for max_depth ({self.max_depth})"
+                )
+        
+        return self
+
+
+class ModelPathConfig(BaseModel):
+    """
+    Pydantic model for validating model file paths and directories.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    artifacts_dir: Path = Field(..., description="Directory for storing model artifacts")
+    model_filename: str = Field(..., description="Filename for the saved model")
+    plots_dir: Optional[Path] = Field(default=None, description="Directory for storing plots")
+    
+    @field_validator('artifacts_dir', 'plots_dir')
+    @classmethod
+    def validate_and_create_directories(cls, v: Optional[Path]) -> Optional[Path]:
+        """Create directories if they don't exist."""
+        if v is not None:
+            v = Path(v)
+            v.mkdir(parents=True, exist_ok=True)
+        return v
+    
+    @field_validator('model_filename')
+    @classmethod
+    def validate_model_filename(cls, v: str) -> str:
+        """Validate model filename."""
+        if not v or not v.strip():
+            raise ValueError("model_filename cannot be empty")
+        # Check for valid file extension
+        valid_extensions = ['.joblib', '.pkl', '.pickle', '.h5', '.hdf5', '.pth', '.pt', '.onnx']
+        if not any(v.lower().endswith(ext) for ext in valid_extensions):
+            logger.warning(f"Model filename '{v}' does not have a standard ML model extension")
+        return v.strip()
+    
+    @property
+    def model_path(self) -> Path:
+        """Full path to the saved model file."""
+        return self.artifacts_dir / self.model_filename
+
+
+class ModelMetricsConfig(BaseModel):
+    """
+    Pydantic model for validating ML model performance metrics.
+    
+    Provides type-safe validation for common regression and classification metrics.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    # Regression metrics
+    r2_score: Optional[float] = Field(default=None, ge=-float('inf'), le=1.0, description="R² score (-inf <= r2 <= 1)")
+    rmse: Optional[float] = Field(default=None, ge=0.0, description="Root Mean Squared Error (must be >= 0)")
+    mae: Optional[float] = Field(default=None, ge=0.0, description="Mean Absolute Error (must be >= 0)")
+    mse: Optional[float] = Field(default=None, ge=0.0, description="Mean Squared Error (must be >= 0)")
+    
+    # Classification metrics
+    accuracy: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Accuracy (0 <= acc <= 1)")
+    precision: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Precision (0 <= prec <= 1)")
+    recall: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Recall (0 <= rec <= 1)")
+    f1_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="F1 Score (0 <= f1 <= 1)")
+    
+    # Additional metrics
+    loss: Optional[float] = Field(default=None, ge=0.0, description="Loss value (must be >= 0)")
+    
+    @model_validator(mode='after')
+    def validate_metric_consistency(self) -> 'ModelMetricsConfig':
+        """Validate that metrics are consistent with each other."""
+        # Validate RMSE and MSE relationship
+        if self.rmse is not None and self.mse is not None:
+            expected_rmse = self.mse ** 0.5
+            if abs(self.rmse - expected_rmse) > 1e-6:
+                logger.warning(f"RMSE ({self.rmse}) and MSE ({self.mse}) are inconsistent")
+        
+        # Validate F1 score consistency with precision and recall
+        if self.f1_score is not None and self.precision is not None and self.recall is not None:
+            if self.precision > 0 and self.recall > 0:
+                expected_f1 = 2 * (self.precision * self.recall) / (self.precision + self.recall)
+                if abs(self.f1_score - expected_f1) > 0.01:
+                    logger.warning(
+                        f"F1 score ({self.f1_score}) may be inconsistent with "
+                        f"precision ({self.precision}) and recall ({self.recall})"
+                    )
+        
+        return self
+    
+    def get_primary_metric(self) -> Optional[float]:
+        """Get the primary metric based on available metrics."""
+        if self.r2_score is not None:
+            return self.r2_score
+        elif self.accuracy is not None:
+            return self.accuracy
+        elif self.f1_score is not None:
+            return self.f1_score
+        elif self.rmse is not None:
+            return self.rmse
+        return None
+    
+    def is_good_performance(self, threshold: float = 0.7) -> bool:
+        """Check if model performance meets threshold."""
+        primary = self.get_primary_metric()
+        if primary is None:
+            return False
+        
+        # For R², accuracy, F1: higher is better
+        if self.r2_score is not None or self.accuracy is not None or self.f1_score is not None:
+            return primary >= threshold
+        
+        # For RMSE, MAE, MSE: lower is better (invert threshold)
+        if self.rmse is not None or self.mae is not None or self.mse is not None:
+            return primary <= (1.0 - threshold)
+        
+        return False
+
+
+if TYPE_CHECKING:
+    import pandas
+    import dask.dataframe
+    DataFrameType = Union[pandas.DataFrame, List[Dict[str, Any]], dask.dataframe.DataFrame]
+    DataFrameTypeSimple = Union[pandas.DataFrame, List[Dict], dask.dataframe.DataFrame]
+else:
+    DataFrameType = Any
+    DataFrameTypeSimple = Any
+
+
+class DataFrameInputValidator(BaseModel):
+    """
+    Generic Pydantic model for validating DataFrame inputs (Pandas or Dask).
+    
+    Can be used for both training and prediction data validation.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    data: DataFrameType = Field(
+        ...,
+        description="Input data as DataFrame or list of dictionaries"
+    )
+    required_columns: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of required column names"
+    )
+    min_rows: int = Field(default=1, ge=1, description="Minimum number of rows required")
+    
+    @field_validator('data')
+    @classmethod
+    def validate_data_structure(cls, v: DataFrameTypeSimple) -> DataFrameTypeSimple:
+        """Validate input data structure."""
+        if isinstance(v, list):
+            if not v:
+                raise ValueError("Input data list cannot be empty")
+            if not all(isinstance(item, dict) for item in v):
+                raise ValueError("All items in input data list must be dictionaries")
+        elif PANDAS_AVAILABLE:
+            assert pd is not None  # Type narrowing: PANDAS_AVAILABLE guarantees pd is not None
+            if isinstance(v, pd.DataFrame):
+                if v.empty:
+                    raise ValueError("Input DataFrame cannot be empty")
+        elif DASK_AVAILABLE:
+            assert dd is not None  # Type narrowing: DASK_AVAILABLE guarantees dd is not None
+            if isinstance(v, dd.DataFrame):
+                if len(v) == 0:
+                    raise ValueError("Input Dask DataFrame cannot be empty")
+        elif not (PANDAS_AVAILABLE or DASK_AVAILABLE):
+            raise ImportError("Neither pandas nor dask.dataframe is available")
+        else:
+            raise TypeError(
+                f"Input data must be pandas DataFrame, Dask DataFrame, or list of dicts, got {type(v)}"
+            )
+        return v
+    
+    @field_validator('required_columns')
+    @classmethod
+    def validate_required_columns(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        """Validate required columns list."""
+        if v is None:
+            return v
+        if not v:
+            raise ValueError("required_columns list cannot be empty if provided")
+        if len(v) != len(set(v)):
+            raise ValueError("required_columns list contains duplicates")
+        cleaned = [col.strip() for col in v if col.strip()]
+        if not cleaned:
+            raise ValueError("required_columns list contains only empty strings")
+        return cleaned
+    
+    def validate_dataframe(self):
+        """
+        Validate and convert input to pandas DataFrame.
+        
+        Returns:
+            Validated pandas DataFrame
+            
+        Raises:
+            ValueError: If validation fails
+            ImportError: If pandas is not available
+        """
+        if not PANDAS_AVAILABLE:
+            raise ImportError("pandas is required for DataFrame validation")
+        
+        assert pd is not None  # Type narrowing: PANDAS_AVAILABLE check above guarantees pd is not None
+        
+        # Convert list to DataFrame if needed
+        if isinstance(self.data, list):
+            df = pd.DataFrame(self.data)
+        elif DASK_AVAILABLE:
+            assert dd is not None  # Type narrowing: DASK_AVAILABLE guarantees dd is not None
+            if isinstance(self.data, dd.DataFrame):
+                df = self.data.compute()
+            else:
+                df = self.data
+        else:
+            df = self.data
+        
+        # Check minimum rows
+        if len(df) < self.min_rows:
+            raise ValueError(
+                f"Data has {len(df)} rows, which is less than the minimum required ({self.min_rows})"
+            )
+        
+        # Check required columns
+        if self.required_columns:
+            missing = [col for col in self.required_columns if col not in df.columns]
+            if missing:
+                raise ValueError(f"Data is missing required columns: {missing}")
+        
+        return df
+
+
+class TrainingConfig(BaseModel):
+    """
+    Pydantic model for validating training configuration.
+    
+    Combines hyperparameters, data validation, and path configuration.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    # Data configuration
+    features: List[str] = Field(..., min_length=1, description="List of feature column names")
+    target: str = Field(..., description="Target column name")
+    
+    # Hyperparameters
+    hyperparameters: Optional[ModelHyperparameterConfig] = Field(
+        default=None,
+        description="Model hyperparameters"
+    )
+    
+    # Paths
+    paths: Optional[ModelPathConfig] = Field(
+        default=None,
+        description="Model paths configuration"
+    )
+    
+    # Data validation
+    min_training_rows: int = Field(default=10, ge=1, description="Minimum rows for training")
+    test_size: float = Field(default=0.2, gt=0.0, lt=1.0, description="Test size proportion")
+    
+    @field_validator('features')
+    @classmethod
+    def validate_features(cls, v: List[str]) -> List[str]:
+        """Validate features list."""
+        if not v:
+            raise ValueError("features list cannot be empty")
+        if len(v) != len(set(v)):
+            raise ValueError("features list contains duplicates")
+        cleaned = [f.strip() for f in v if f.strip()]
+        if not cleaned:
+            raise ValueError("features list contains only empty strings")
+        return cleaned
+    
+    @field_validator('target')
+    @classmethod
+    def validate_target(cls, v: str, info) -> str:
+        """Validate target is not in features."""
+        if 'features' in info.data:
+            if v in info.data['features']:
+                raise ValueError(f"Target '{v}' cannot be in features list")
+        if not v or not v.strip():
+            raise ValueError("target cannot be empty")
+        return v.strip()
+
+
+class PredictionConfig(BaseModel):
+    """
+    Pydantic model for validating prediction configuration.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    # Required features
+    required_features: List[str] = Field(..., min_length=1, description="List of required feature columns")
+    
+    # Model path
+    model_path: Optional[Path] = Field(default=None, description="Path to saved model file")
+    
+    # Data validation
+    min_prediction_rows: int = Field(default=1, ge=1, description="Minimum rows for prediction")
+    
+    @field_validator('required_features')
+    @classmethod
+    def validate_required_features(cls, v: List[str]) -> List[str]:
+        """Validate required features list."""
+        if not v:
+            raise ValueError("required_features list cannot be empty")
+        if len(v) != len(set(v)):
+            raise ValueError("required_features list contains duplicates")
+        cleaned = [f.strip() for f in v if f.strip()]
+        if not cleaned:
+            raise ValueError("required_features list contains only empty strings")
+        return cleaned
+    
+    @field_validator('model_path')
+    @classmethod
+    def validate_model_path_exists(cls, v: Optional[Path]) -> Optional[Path]:
+        """Validate model path exists if provided."""
+        if v is not None:
+            v = Path(v)
+            if not v.exists():
+                raise FileNotFoundError(f"Model file not found: {v}")
+        return v
+
+
+# ============================================================================
 # Utility Functions
 # ============================================================================
 
@@ -535,7 +912,15 @@ def load_settings(env_file: Optional[Path] = None) -> ApplicationSettings:
         ApplicationSettings instance
     """
     if env_file:
-        return ApplicationSettings(_env_file=str(env_file))
+        # Create a subclass with custom env_file in model_config
+        class CustomApplicationSettings(ApplicationSettings):
+            model_config = SettingsConfigDict(
+                env_file=str(env_file),
+                env_file_encoding='utf-8',
+                case_sensitive=False,
+                extra='ignore'
+            )
+        return CustomApplicationSettings()
     return ApplicationSettings()
 
 
@@ -629,6 +1014,35 @@ if __name__ == "__main__":
     print(f"   Data dir: {settings.data_directory}")
     print(f"   Geographic bounds: Lat [{settings.lat_min}, {settings.lat_max}], "
           f"Lon [{settings.lon_min}, {settings.lon_max}]")
+    
+    # Enhancement 5: ML Model Configuration Validators
+    print("\n5. ML Model Configuration Validators:")
+    if PANDAS_AVAILABLE:
+        hyperparams = ModelHyperparameterConfig(
+            n_estimators=100,
+            learning_rate=0.1,
+            random_state=42,
+            test_size=0.2
+        )
+        print(f"   Hyperparameters validated: n_estimators={hyperparams.n_estimators}, "
+              f"learning_rate={hyperparams.learning_rate}")
+        
+        metrics = ModelMetricsConfig(
+            r2_score=0.85,
+            rmse=0.15,
+            mae=0.12
+        )
+        print(f"   Model metrics validated: R²={metrics.r2_score:.2f}, "
+              f"RMSE={metrics.rmse:.2f}")
+        print(f"   Good performance: {metrics.is_good_performance(threshold=0.7)}")
+        
+        path_config = ModelPathConfig(
+            artifacts_dir=Path("artifacts"),
+            model_filename="test_model.joblib"
+        )
+        print(f"   Model path validated: {path_config.model_path}")
+    else:
+        print("   Pandas not available - skipping DataFrame validators")
     
     print("\n" + "="*80)
     print("✅ All enhancements working correctly!")
