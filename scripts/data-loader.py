@@ -9,7 +9,7 @@ import logging
 import os
 import argparse
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional, List, cast
 import json
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
@@ -22,7 +22,7 @@ try:
     from pydantic_enhancements import (
         ColumnNameValidator, NumericStatistics, CategoricalStatistics,
         DatasetStatistics, ErrorHandler, ColumnValidationError,
-        RangeValidationError, DataQualityError
+        RangeValidationError, DataQualityError, DataValidationError
     )
 except ImportError:
     logger.warning("Pydantic enhancements module not available. Using basic features only.")
@@ -33,7 +33,8 @@ except ImportError:
     ErrorHandler = None
     ColumnValidationError = Exception
     RangeValidationError = Exception
-    DataQualityError = Exception
+    DataQualityError = None
+    DataValidationError = Exception
 
 class DataConfig(BaseModel):
     """Configuration for data loading with Pydantic validation.
@@ -262,8 +263,11 @@ class DataValidator:
                             self.error_handler.add_warning(f"Column '{col}' does not match standard patterns")
                         warnings.append(f"Column '{col}' does not match standard patterns")
                 if column_validation.get('suggestions'):
-                    for suggestion_info in column_validation['suggestions']:
-                        suggestion_msg = f"Column '{suggestion_info['column']}': Consider {suggestion_info['suggestions']}"
+                    suggestions_list = cast(List[Dict[str, Any]], column_validation['suggestions'])
+                    for suggestion_info in suggestions_list:
+                        col = suggestion_info.get('column', '')
+                        suggestions = suggestion_info.get('suggestions', [])
+                        suggestion_msg = f"Column '{col}': Consider {suggestions}"
                         if self.error_handler:
                             self.error_handler.add_warning(suggestion_msg)
                         warnings.append(suggestion_msg)
@@ -271,32 +275,49 @@ class DataValidator:
                 logger.warning(f"Column name validation failed: {e}")
         
         # Compute length for Dask DataFrame safely
-        df_len = _get_dataframe_length(df)
-        
-        # Compute memory usage safely
-        mem_usage_sum = df.memory_usage(deep=True).sum()
-        mem_usage_mb = _safe_compute(mem_usage_sum) / 1e6
-        
-        metadata = ValidationMetadata(
-            rows=df_len,
-            columns=len(df.columns),
-            memory_usage=mem_usage_mb
-        )
+        try:
+            df_len = _get_dataframe_length(df)
+            
+            # Compute memory usage safely
+            mem_usage_sum = df.memory_usage(deep=True).sum()
+            mem_usage_mb = _safe_compute(mem_usage_sum) / 1e6
+            
+            metadata = ValidationMetadata(
+                rows=df_len,
+                columns=len(df.columns),
+                memory_usage=mem_usage_mb
+            )
 
-        # Check if DataFrame is empty
-        if df_len == 0 or df_len < min_rows:
-            is_valid = False
-            error_msg = f"DataFrame is empty or has less than {min_rows} rows"
-            if self.error_handler and DataQualityError:
-                self.error_handler.add_error(DataQualityError(
-                    issue=error_msg,
-                    affected_rows=df_len,
-                    total_rows=min_rows,
-                    threshold=0.0
-                ))
-            errors.append(error_msg)
+            # Check if DataFrame is empty
+            if df_len == 0 or df_len < min_rows:
+                is_valid = False
+                error_msg = f"DataFrame is empty or has less than {min_rows} rows"
+                if self.error_handler and DataQualityError is not None:
+                    error_instance = DataQualityError(
+                        issue=error_msg,
+                        affected_rows=df_len,
+                        total_rows=min_rows,
+                        threshold=0.0
+                    )
+                    self.error_handler.add_error(cast(Any, error_instance))
+                errors.append(error_msg)
+                return ValidationReport(
+                    is_valid=is_valid,
+                    errors=errors,
+                    warnings=warnings,
+                    metadata=metadata
+                )
+        except Exception as e:
+            logger.error(f"Error during initial validation: {e}")
+            # Return a basic report with error if initial validation fails
+            metadata = ValidationMetadata(
+                rows=0,
+                columns=len(df.columns) if hasattr(df, 'columns') else 0,
+                memory_usage=0.0
+            )
+            errors.append(f"Validation error: {str(e)}")
             return ValidationReport(
-                is_valid=is_valid,
+                is_valid=False,
                 errors=errors,
                 warnings=warnings,
                 metadata=metadata
@@ -309,12 +330,21 @@ class DataValidator:
                 is_valid = False
                 for col in missing_cols:
                     error_msg = f"Missing required column: {col}"
-                    if self.error_handler and ColumnValidationError:
-                        self.error_handler.add_error(ColumnValidationError(
+                    if self.error_handler and ColumnValidationError is not Exception:
+<<<<<<< Current (Your changes)
+                        error_instance = ColumnValidationError(
+                            col,
+                            "Required column is missing",
+                            "Ensure the column exists in the dataset"
+=======
+                        # Type checker needs explicit keyword args when ColumnValidationError could be Exception
+                        error_instance = ColumnValidationError(
                             column_name=col,
                             issue="Required column is missing",
                             suggestion="Ensure the column exists in the dataset"
-                        ))
+>>>>>>> Incoming (Background Agent changes)
+                        )
+                        self.error_handler.add_error(cast(Any, error_instance))
                     errors.append(error_msg)
         
         # Check for completely empty columns
@@ -367,26 +397,28 @@ class DataValidator:
         # Warn about high missing data percentage using DataQualityError if available
         if stats.missing_values_percent > 0.5:
             warning_msg = f"High missing data percentage: {stats.missing_values_percent:.2f}%"
-            if self.error_handler and DataQualityError:
+            if self.error_handler and DataQualityError is not None:
                 total_nulls = sum(missing_values_dict.values())
-                self.error_handler.add_error(DataQualityError(
+                error_instance = DataQualityError(
                     issue="High missing data percentage detected",
                     affected_rows=int(total_nulls),
                     total_rows=df_len,
                     threshold=0.5
-                ))
+                )
+                self.error_handler.add_error(cast(Any, error_instance))
             warnings.append(warning_msg)
 
         # Check for duplicate rows
         if stats.duplicate_rows > 0:
             warning_msg = f"Duplicate rows found: {stats.duplicate_rows}"
-            if self.error_handler and DataQualityError:
-                self.error_handler.add_error(DataQualityError(
+            if self.error_handler and DataQualityError is not None:
+                error_instance = DataQualityError(
                     issue="Duplicate rows detected",
                     affected_rows=int(dup_sum),
                     total_rows=df_len,
                     threshold=0.0
-                ))
+                )
+                self.error_handler.add_error(cast(Any, error_instance))
             warnings.append(warning_msg)
         
         # Include error handler report in warnings if available
