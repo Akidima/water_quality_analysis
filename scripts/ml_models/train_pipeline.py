@@ -7,10 +7,11 @@ import pandas as pd
 import numpy as np
 import joblib
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Union, List, Optional
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from pydantic import ValidationError
@@ -25,12 +26,10 @@ except ImportError:
 from .model_base import ModelBase, ModelMetrics
 from .model_utils import ModelConfig, get_logger
 from .feature_engineering import FeatureEngineer
+from .advanced_feature_engineering import AdvancedFeatureEngineer
 
 # Import enhanced Pydantic validators
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from pydantic_enhancements import ModelHyperparameterConfig
+from scripts.pydantic_enhancements import ModelHyperparameterConfig
 
 logger = get_logger(__name__)
 
@@ -41,20 +40,45 @@ class SpillTrainingPipeline(ModelBase):
     
     Uses Pydantic validation for configuration and metrics, and supports
     both Pandas and Dask DataFrames (converted to Pandas for sklearn compatibility).
+    
+    Supports multiple model types, advanced feature engineering, and ensemble methods
+    for improved R² scores (targeting 85-95%).
     """
     
-    def __init__(self, config: ModelConfig = None, model_name: str = None):
+    def __init__(
+        self, 
+        config: ModelConfig = None, 
+        model_name: str = None,
+        model_type: str = 'gradient_boosting',  # Changed default for better performance
+        use_polynomial_features: bool = True,
+        poly_degree: int = 2,
+        use_stacking_ensemble: bool = False,
+        n_estimators: int = 200  # Increased default for better performance
+    ):
         """
         Initialize the training pipeline.
         
         Args:
             config: ModelConfig instance with training configuration
             model_name: Optional name for the model (for logging)
+            model_type: Type of model ('random_forest', 'gradient_boosting', 'stacking')
+            use_polynomial_features: Whether to add polynomial feature interactions
+            poly_degree: Degree of polynomial features (default: 2)
+            use_stacking_ensemble: Whether to use stacking ensemble (combines RF + GB + Ridge)
+            n_estimators: Number of estimators for ensemble models (default: 200)
         """
         super().__init__(model_name=model_name or "SpillTrainingPipeline")
         self.config = config or ModelConfig()
+        # Override n_estimators if specified
+        if n_estimators != self.config.n_estimators:
+            self.config.n_estimators = n_estimators
         self.pipeline = None
         self.metrics = ModelMetrics()
+        self.model_type = model_type
+        self.use_polynomial_features = use_polynomial_features
+        self.poly_degree = poly_degree
+        self.use_stacking_ensemble = use_stacking_ensemble
+        self.advanced_engineer = AdvancedFeatureEngineer()
     
     def train(self, data: Union[pd.DataFrame, 'dd.DataFrame'], **kwargs) -> Dict[str, float]:
         """
@@ -101,15 +125,71 @@ class SpillTrainingPipeline(ModelBase):
             random_state=self.config.random_state
         )
 
-        # 4. Define Pipeline (Scaler + Model)
-        self.pipeline = Pipeline([
-            ('scaler', StandardScaler()),
-            ('regressor', RandomForestRegressor(
+        # 4. Define Pipeline (Scaler + Optional Polynomial Features + Model)
+        pipeline_steps = [('scaler', StandardScaler())]
+        
+        # Add polynomial features for feature interactions (boosts R²)
+        if self.use_polynomial_features:
+            pipeline_steps.append(('poly', PolynomialFeatures(
+                degree=self.poly_degree,
+                include_bias=False,
+                interaction_only=True  # Only interactions, not squared terms
+            )))
+            logger.info(f"Using polynomial features with degree={self.poly_degree}")
+        
+        # Select model type
+        if self.use_stacking_ensemble or self.model_type == 'stacking':
+            # Stacking ensemble: RF + GB + Ridge with Ridge as final estimator
+            estimators = [
+                ('rf', RandomForestRegressor(
+                    n_estimators=self.config.n_estimators,
+                    max_depth=15,
+                    min_samples_split=5,
+                    min_samples_leaf=2,
+                    max_features='sqrt',
+                    random_state=self.config.random_state,
+                    n_jobs=-1
+                )),
+                ('gb', GradientBoostingRegressor(
+                    n_estimators=self.config.n_estimators,
+                    max_depth=5,
+                    learning_rate=0.1,
+                    min_samples_split=5,
+                    min_samples_leaf=2,
+                    random_state=self.config.random_state
+                ))
+            ]
+            pipeline_steps.append(('regressor', StackingRegressor(
+                estimators=estimators,
+                final_estimator=Ridge(alpha=1.0),
+                cv=5,
+                n_jobs=-1
+            )))
+            logger.info("Using StackingRegressor (RF + GB + Ridge)")
+        elif self.model_type == 'gradient_boosting':
+            pipeline_steps.append(('regressor', GradientBoostingRegressor(
                 n_estimators=self.config.n_estimators,
+                max_depth=5,  # Prevent overfitting
+                learning_rate=0.1,
+                min_samples_split=5,
+                min_samples_leaf=2,
+                subsample=0.9,  # Add subsampling for better generalization
+                random_state=self.config.random_state
+            )))
+            logger.info("Using GradientBoostingRegressor")
+        else:  # random_forest
+            pipeline_steps.append(('regressor', RandomForestRegressor(
+                n_estimators=self.config.n_estimators,
+                max_depth=15,
+                min_samples_split=5,
+                min_samples_leaf=2,
+                max_features='sqrt',
                 random_state=self.config.random_state,
                 n_jobs=-1
-            ))
-        ])
+            )))
+            logger.info("Using RandomForestRegressor")
+        
+        self.pipeline = Pipeline(pipeline_steps)
 
         # 5. Fit Model
         logger.info(f"Fitting model on {len(X_train)} samples...")

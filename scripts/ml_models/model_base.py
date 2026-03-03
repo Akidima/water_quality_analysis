@@ -19,10 +19,7 @@ except ImportError:
 from .model_utils import get_logger
 
 # Import enhanced Pydantic validators
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from pydantic_enhancements import ModelMetricsConfig
+from scripts.pydantic_enhancements import ModelMetricsConfig
 
 logger = get_logger(__name__)
 

@@ -9,10 +9,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 # Import enhanced Pydantic validators
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from pydantic_enhancements import ModelPathConfig, ModelHyperparameterConfig
+from scripts.pydantic_enhancements import ModelPathConfig, ModelHyperparameterConfig
 
 
 class ModelConfig(BaseModel):
@@ -43,7 +40,19 @@ class ModelConfig(BaseModel):
     # Data Settings
     features: List[str] = Field(
         default_factory=lambda: [
-            'Avg_Annual_Spills', 'Latitude', 'Longitude'
+            # Historical spill data
+            'Spill Events 2020', 'Spill Events 2021', 'Spill Events 2022',
+            # Geographic features
+            'Latitude', 'Longitude',
+            # Baseline and projections (strongly correlated with target)
+            'Baseline',
+            '2025 Projected Spills', '2030 Projected Spills', 
+            '2035 Projected Spills', '2040 Projected Spills',
+            '2045 Projected Spills', '2050 Projected Spills',
+            # Binary requirement flags (0/1)
+            'Meets 2025 Requirements', 'Meets 2030 Requirements',
+            'Meets 2035 Requirements', 'Meets 2040 Requirements',
+            'Meets 2045 Requirements', 'Meets 2050 Requirements',
         ],
         description="List of feature column names to use for training"
     )

@@ -15,8 +15,8 @@ from sklearn.model_selection import (
     StratifiedKFold
 )
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import make_scorer, mean_squared_error, r2_score, mean_absolute_error
 import joblib
 
@@ -53,24 +53,40 @@ class HyperparameterTuner:
         self.cv_results_ = None
         self.best_estimator_ = None
     
-    def _create_base_pipeline(self) -> Pipeline:
-        """Create base pipeline for the model."""
+    def _create_base_pipeline(self, use_poly: bool = True) -> Pipeline:
+        """Create base pipeline for the model with optional polynomial features."""
+        steps = [('scaler', StandardScaler())]
+        
+        if use_poly:
+            steps.append(('poly', PolynomialFeatures(degree=2, include_bias=False, interaction_only=True)))
+        
         if self.model_type == 'random_forest':
-            return Pipeline([
-                ('scaler', StandardScaler()),
-                ('regressor', RandomForestRegressor(random_state=self.config.random_state))
-            ])
+            steps.append(('regressor', RandomForestRegressor(random_state=self.config.random_state, n_jobs=-1)))
+        elif self.model_type == 'gradient_boosting':
+            steps.append(('regressor', GradientBoostingRegressor(random_state=self.config.random_state)))
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
+        
+        return Pipeline(steps)
     
     def _get_default_param_grid(self) -> Dict[str, List[Any]]:
-        """Get default parameter grid for the model type."""
+        """Get default parameter grid for the model type with expanded options."""
         if self.model_type == 'random_forest':
             return {
-                'regressor__n_estimators': [50, 100, 200],
-                'regressor__max_depth': [None, 10, 20, 30],
+                'regressor__n_estimators': [100, 200, 300, 500],
+                'regressor__max_depth': [5, 10, 15, 20, 30, None],
+                'regressor__min_samples_split': [2, 5, 10, 15],
+                'regressor__min_samples_leaf': [1, 2, 4, 8],
+                'regressor__max_features': ['sqrt', 'log2', 0.5, 0.8]
+            }
+        elif self.model_type == 'gradient_boosting':
+            return {
+                'regressor__n_estimators': [100, 200, 300, 500],
+                'regressor__max_depth': [3, 5, 7, 10],
+                'regressor__learning_rate': [0.01, 0.05, 0.1, 0.2],
                 'regressor__min_samples_split': [2, 5, 10],
-                'regressor__min_samples_leaf': [1, 2, 4]
+                'regressor__min_samples_leaf': [1, 2, 4],
+                'regressor__subsample': [0.8, 0.9, 1.0]
             }
         else:
             return {}
@@ -102,7 +118,7 @@ class HyperparameterTuner:
         """
         logger.info(f"Starting grid search with {cv}-fold cross-validation...")
         
-        pipeline = self._create_base_pipeline()
+        pipeline = self._create_base_pipeline(use_poly=True)
         param_grid = param_grid or self._get_default_param_grid()
         
         grid_search = GridSearchCV(
@@ -135,7 +151,7 @@ class HyperparameterTuner:
     def random_search(
         self,
         X: pd.DataFrame,
-        y: pd.Series,
+        y: Union[pd.Series, pd.DataFrame],
         param_distributions: Optional[Dict[str, List[Any]]] = None,
         n_iter: int = 50,
         cv: int = 5,
@@ -163,7 +179,7 @@ class HyperparameterTuner:
         """
         logger.info(f"Starting random search with {n_iter} iterations...")
         
-        pipeline = self._create_base_pipeline()
+        pipeline = self._create_base_pipeline(use_poly=True)
         param_distributions = param_distributions or self._get_default_param_grid()
         random_state = random_state or self.config.random_state
         

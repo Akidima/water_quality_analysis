@@ -1,0 +1,139 @@
+{
+  "timestamp": "20260130_192806",
+  "start_time": "2026-01-30T19:28:07.085405",
+  "notebook_path": "notebooks/predictive_modeling/comprehensive_modeling.ipynb",
+  "cells_executed": [
+    {
+      "cell": 1,
+      "status": "completed"
+    },
+    {
+      "cell": 2,
+      "status": "failed"
+    },
+    {
+      "cell": 3,
+      "status": "completed"
+    },
+    {
+      "cell": 4,
+      "status": "failed"
+    },
+    {
+      "cell": 5,
+      "status": "completed"
+    },
+    {
+      "cell": 6,
+      "status": "failed"
+    },
+    {
+      "cell": 7,
+      "status": "failed"
+    },
+    {
+      "cell": 8,
+      "status": "failed"
+    },
+    {
+      "cell": 9,
+      "status": "failed"
+    },
+    {
+      "cell": 10,
+      "status": "failed"
+    },
+    {
+      "cell": 11,
+      "status": "failed"
+    },
+    {
+      "cell": 12,
+      "status": "failed"
+    },
+    {
+      "cell": 13,
+      "status": "failed"
+    },
+    {
+      "cell": 14,
+      "status": "failed"
+    },
+    {
+      "cell": 15,
+      "status": "failed"
+    },
+    {
+      "cell": 16,
+      "status": "failed"
+    },
+    {
+      "cell": 17,
+      "status": "failed"
+    }
+  ],
+  "errors": [
+    {
+      "cell": 2,
+      "error": "<built-in function cpu_count_logical> returned a result with an error set"
+    },
+    {
+      "cell": 4,
+      "error": "name 'DataFrameInputValidator' is not defined"
+    },
+    {
+      "cell": 6,
+      "error": "name 'ModelConfig' is not defined"
+    },
+    {
+      "cell": 7,
+      "error": "name 'config' is not defined"
+    },
+    {
+      "cell": 8,
+      "error": "name 'logger' is not defined"
+    },
+    {
+      "cell": 9,
+      "error": "name 'SpillTrainingPipeline' is not defined"
+    },
+    {
+      "cell": 10,
+      "error": "name 'logger' is not defined"
+    },
+    {
+      "cell": 11,
+      "error": "name 'logger' is not defined"
+    },
+    {
+      "cell": 12,
+      "error": "name 'logger' is not defined"
+    },
+    {
+      "cell": 13,
+      "error": "name 'config' is not defined"
+    },
+    {
+      "cell": 14,
+      "error": "<built-in function cpu_count_logical> returned a result with an error set"
+    },
+    {
+      "cell": 15,
+      "error": "<built-in function cpu_count_logical> returned a result with an error set"
+    },
+    {
+      "cell": 16,
+      "error": "<built-in function cpu_count_logical> returned a result with an error set"
+    },
+    {
+      "cell": 17,
+      "error": "<built-in function cpu_count_logical> returned a result with an error set"
+    }
+  ],
+  "warnings": [],
+  "data_info": {},
+  "model_metrics": {},
+  "predictions": [],
+  "end_time": "2026-01-30T19:28:27.165260",
+  "duration": 20.079855
+}

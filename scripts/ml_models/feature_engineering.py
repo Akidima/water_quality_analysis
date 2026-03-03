@@ -286,3 +286,91 @@ class FeatureEngineer:
             min_rows_after_cleaning=config.min_rows_after_cleaning
         )
 
+    @staticmethod
+    def encode_flag_columns(
+        df: pd.DataFrame,
+        flag_columns: List[str] = None
+    ) -> pd.DataFrame:
+        """
+        Convert Yes/No (Y/N) flag columns to numeric 0/1 values.
+        
+        Args:
+            df: Input DataFrame
+            flag_columns: List of flag column names to encode. If None, uses default environmental flags.
+            
+        Returns:
+            DataFrame with encoded flag columns (new columns with _encoded suffix)
+        """
+        if flag_columns is None:
+            flag_columns = [
+                'Bathing Water Discharge Flag',
+                'Shellfish Water Discharge Flag',
+                'Ecological High Priority Site Flag',
+                'Marine Protected Area Discharge Flag',
+                'Non-bathing Priority Site Flag',
+                'Sewage Reduction Plan Targets Met Flag',
+                'Rainfall Improvement Target Delivery Flag',
+            ]
+        
+        result_df = df.copy()
+        encoded_cols = []
+        
+        for col in flag_columns:
+            if col in df.columns:
+                encoded_col_name = f'{col}_encoded'
+                # Map Y/N to 1/0, handle various formats
+                result_df[encoded_col_name] = df[col].map({
+                    'Y': 1, 'N': 0,
+                    'Yes': 1, 'No': 0,
+                    'y': 1, 'n': 0,
+                    'yes': 1, 'no': 0,
+                    True: 1, False: 0,
+                    1: 1, 0: 0
+                }).fillna(0).astype(int)
+                encoded_cols.append(encoded_col_name)
+                logger.info(f"Encoded flag column: {col} -> {encoded_col_name}")
+            else:
+                logger.warning(f"Flag column not found: {col}")
+        
+        logger.info(f"Created {len(encoded_cols)} encoded flag columns")
+        return result_df
+
+    @staticmethod
+    def encode_categorical_columns(
+        df: pd.DataFrame,
+        categorical_columns: List[str] = None
+    ) -> pd.DataFrame:
+        """
+        Encode categorical columns using label encoding.
+        
+        Args:
+            df: Input DataFrame
+            categorical_columns: List of categorical column names to encode. 
+                                If None, uses default columns.
+            
+        Returns:
+            DataFrame with encoded categorical columns (new columns with _encoded suffix)
+        """
+        if categorical_columns is None:
+            categorical_columns = [
+                'Receiving Environment',  # Inland/Coastal (only 2 values)
+                'Water company',  # Limited number of companies
+            ]
+        
+        result_df = df.copy()
+        encoded_cols = []
+        
+        for col in categorical_columns:
+            if col in df.columns:
+                encoded_col_name = f'{col}_encoded'
+                # Use factorize for label encoding
+                result_df[encoded_col_name], _ = pd.factorize(df[col])
+                encoded_cols.append(encoded_col_name)
+                unique_values = df[col].nunique()
+                logger.info(f"Encoded categorical column: {col} -> {encoded_col_name} ({unique_values} unique values)")
+            else:
+                logger.warning(f"Categorical column not found: {col}")
+        
+        logger.info(f"Created {len(encoded_cols)} encoded categorical columns")
+        return result_df
+

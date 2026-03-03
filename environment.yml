@@ -204,4 +204,6 @@ dependencies:
   - zeromq=4.3.5=hcec6c5f_0
   - zlib=1.2.13=h4b97444_1
   - zstd=1.5.6=h138b38a_0
+  - pip:
+    - kneed
 prefix: /Users/akidimageorge/Desktop/AI-ML/water_quality_analysis/env

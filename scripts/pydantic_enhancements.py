@@ -762,7 +762,7 @@ class DataFrameInputValidator(BaseModel):
             raise ValueError("required_columns list contains only empty strings")
         return cleaned
     
-    def validate_dataframe(self):
+    def validate_dataframe(self) -> "pandas.DataFrame":
         """
         Validate and convert input to pandas DataFrame.
         

@@ -23,10 +23,7 @@ from .feature_engineering import FeatureEngineer
 from .model_base import ModelBase, ModelMetrics, _ensure_pandas_dataframe, _is_dask_dataframe
 
 # Import enhanced Pydantic validators
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from pydantic_enhancements import DataFrameInputValidator
+from scripts.pydantic_enhancements import DataFrameInputValidator
 
 logger = get_logger(__name__)
 

@@ -330,4 +330,93 @@ class AdvancedFeatureEngineer:
     def get_selected_features(self) -> Optional[List[str]]:
         """Get list of selected features."""
         return self.selected_features_
+    
+    def create_water_quality_features(
+        self,
+        df: pd.DataFrame,
+        spill_columns: Optional[List[str]] = None,
+        group_by_column: str = 'Water company'
+    ) -> pd.DataFrame:
+        """
+        Create specialized features for water quality spill prediction.
+        
+        This method creates features proven to boost R² scores:
+        - Rolling averages of spill events
+        - Year-over-year changes
+        - Company-level statistics
+        - Geographic clustering features
+        
+        Args:
+            df: Input DataFrame with water quality data
+            spill_columns: List of spill event columns (e.g., ['Spill Events 2020', ...])
+            group_by_column: Column to group by for aggregate statistics
+            
+        Returns:
+            DataFrame with enhanced features
+        """
+        logger.info("Creating specialized water quality features...")
+        result_df = df.copy()
+        
+        # Default spill columns
+        if spill_columns is None:
+            spill_columns = [col for col in df.columns if 'Spill Events' in col]
+        
+        if len(spill_columns) >= 2:
+            # 1. Calculate average spills across years
+            result_df['Avg_Annual_Spills'] = result_df[spill_columns].mean(axis=1)
+            logger.info("Created Avg_Annual_Spills feature")
+            
+            # 2. Calculate trend (change from first to last year)
+            result_df['Spill_Trend'] = result_df[spill_columns[-1]] - result_df[spill_columns[0]]
+            logger.info("Created Spill_Trend feature")
+            
+            # 3. Max and min spills
+            result_df['Max_Annual_Spills'] = result_df[spill_columns].max(axis=1)
+            result_df['Min_Annual_Spills'] = result_df[spill_columns].min(axis=1)
+            result_df['Spill_Volatility'] = result_df[spill_columns].std(axis=1)
+            logger.info("Created spill volatility features")
+        
+        # 4. Company-level statistics (if group_by column exists)
+        if group_by_column in df.columns:
+            for col in spill_columns:
+                if col in df.columns:
+                    grouped = df.groupby(group_by_column)[col]
+                    result_df[f'{col}_company_mean'] = df[group_by_column].map(grouped.mean().to_dict())
+                    result_df[f'{col}_company_std'] = df[group_by_column].map(grouped.std().to_dict())
+            
+            # Company size (number of sites)
+            company_size = df[group_by_column].value_counts().to_dict()
+            result_df['Company_Site_Count'] = df[group_by_column].map(company_size)
+            logger.info(f"Created company-level statistics grouped by {group_by_column}")
+        
+        # 5. Geographic features
+        if 'Latitude' in df.columns and 'Longitude' in df.columns:
+            # Distance from centroid (simple geographic clustering)
+            lat_mean = df['Latitude'].mean()
+            lon_mean = df['Longitude'].mean()
+            result_df['Distance_From_Center'] = np.sqrt(
+                (df['Latitude'] - lat_mean)**2 + 
+                (df['Longitude'] - lon_mean)**2
+            )
+            
+            # Geographic quadrant
+            result_df['Is_North'] = (df['Latitude'] > lat_mean).astype(int)
+            result_df['Is_East'] = (df['Longitude'] > lon_mean).astype(int)
+            logger.info("Created geographic features")
+        
+        # 6. Flag features (convert boolean flags to numeric if present)
+        flag_columns = [col for col in df.columns if 'Flag' in col]
+        for col in flag_columns:
+            if df[col].dtype == 'object':
+                result_df[f'{col}_numeric'] = df[col].map({'Yes': 1, 'No': 0, True: 1, False: 0}).fillna(0)
+        
+        if flag_columns:
+            # Total number of flags
+            numeric_flags = [f'{col}_numeric' for col in flag_columns if f'{col}_numeric' in result_df.columns]
+            if numeric_flags:
+                result_df['Total_Flags'] = result_df[numeric_flags].sum(axis=1)
+                logger.info(f"Created flag features from {len(flag_columns)} flag columns")
+        
+        logger.info(f"Feature engineering complete. New shape: {result_df.shape}")
+        return result_df
 
